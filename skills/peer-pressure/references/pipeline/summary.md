@@ -49,44 +49,45 @@ Write the summary to the output path in your prompt. Use this structure:
 
 ## Issues
 
-| # | File | Issue |
-|---|------|-------|
-| 1 | […/to/file.go](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | 🟡 L42 Short headline of the problem |
+| # | File | Review |
+|---|------|--------|
+| 1 | […/to/file.go](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | 🟡 (L42): Short headline of the problem |
+|   |   | Fix: short action the author can take |
 
 🔴 critical  🟡 warning  🔵 suggestion
-
-**1. 🟡 warning · file.go:42 · new**
-Full sentence on what is wrong and why it matters.
-Fix: what the author should do.
 ```
 
 If there are no issues, replace the table with "No issues found."
 
 ### Table rules
 
-The table must stay narrow so it fits a laptop terminal. Keep every cell short and put the long text in the details list below the table, which grows downward instead of sideways.
+The table must stay narrow so it fits a laptop terminal, and it must never wrap or add columns. It grows downward: every issue takes two rows.
 
-- **Columns**: exactly three: `#`, `File`, `Issue`. Never add columns.
-- **Rows**: one row per finding in the synthesis. Do not merge or split findings, so the row counts match the synthesis stats. Batched documentation drift items stay one row each.
-- **Order**: sort rows by file in the order files appear in `input.txt` (for a PR, this matches GitHub's "Files changed" tab). Within a file, sort by line number. Number rows after sorting.
-- **File (PR)**: a link to the full URL `https://github.com/<OWNER_REPO>/blob/<HEAD_SHA>/<path>#L<line>`. For a range use `#L<start>-L<end>`. If there is no line, link the file without an anchor. The link text is the last two path segments with a leading `…/`, for example `…/pkg/file.go`, with no line number. If the path has two segments or fewer, show it as is. If the text would be longer than 40 characters, keep only the file name. The URL keeps the full path and line anchor.
+- **Columns**: exactly three: `#`, `File`, `Review`.
+- **Two rows per issue.**
+  - Row 1: the number, the file, and `<emoji> (L<line>): <headline>`.
+  - Row 2: empty `#` and `File` cells, and `Fix: <short fix>`.
+- **Severity emoji** comes first in the Review cell, with no severity word: 🔴 critical, 🟡 warning, 🔵 suggestion, taken from the synthesis. Print the legend line once under the table.
+- **Line**: `L<line>`, or `L<start>-<end>` for a range. If there is no line, write `<emoji> <headline>` with no parentheses.
+- **Headline**: at most 60 characters, plain words, no trailing period. It names the problem, not the reason.
+- **Fix**: at most 60 characters, one action. If the full fix is longer, write the short form here and put the full text under Details.
+- **Rows**: one issue per finding in the synthesis. Do not merge or split findings, so the issue counts match the synthesis stats. Batched documentation drift items stay one issue each.
+- **Order**: sort issues by file in the order files appear in `input.txt` (for a PR, this matches GitHub's "Files changed" tab). Within a file, sort by line number. Number issues after sorting.
+- **File (PR)**: a link to `https://github.com/<OWNER_REPO>/blob/<HEAD_SHA>/<path>#L<line>`. For a range use `#L<start>-L<end>`. If there is no line, link the file without an anchor. The link text is the last two path segments with a leading `…/`, for example `…/pkg/file.go`, with no line number. If the path has two segments or fewer, show it as is. If the text would be longer than 40 characters, keep only the file name. The URL keeps the full path and line anchor.
 - **File (branch or files)**: the same shortened path in backticks, with no link.
-- **Issue cell**: `<severity emoji> L<line> <headline>`. Use `L<start>-<end>` for a range and leave out the line if there is none. The headline is at most 60 characters, plain words, no trailing period. It names the problem, not the reason.
-- **Severity emoji**: 🔴 critical, 🟡 warning, 🔵 suggestion, taken from the synthesis. Print the legend line once under the table.
-- Escape `|` inside cells as `\|`. Do not put line breaks inside cells.
+- **Prior (PR only)**: when an existing comment covers the same point, end the headline with ` (@login)`, and add ` resolved` inside the parentheses if that thread is resolved.
+- Escape `|` inside cells as `\|`. Do not put line breaks inside cells. Do not use `<br>`, because terminals show it as text.
 
-### Details list
+### Details (optional)
 
-After the legend, write one block per row, in the same order and with the same number:
+If an issue needs more than its headline and fix, add a short list under the legend. Write one entry per such issue, in table order:
 
 ```
-**<n>. <emoji> <severity> · <file name>:<line> · <prior>**
-<One or two plain sentences on what is wrong and why it matters.>
-Fix: <one or two plain sentences, or a short inline code snippet, the author can act on.>
+**<n>. <file name>:<line>**
+<One or two plain sentences on why it matters, or the full fix.>
 ```
 
-- Always spell out the severity word, so color is never the only signal.
-- `<prior>` is `new`, or `raised by @login` when an existing comment covers the same point. Add `(resolved)` if that thread is resolved. For a branch or files review, leave `<prior>` and its leading `·` out.
+Skip this list when every headline and fix already says enough.
 
 ## Writing style
 
