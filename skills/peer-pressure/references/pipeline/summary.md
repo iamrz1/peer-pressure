@@ -49,24 +49,44 @@ Write the summary to the output path in your prompt. Use this structure:
 
 ## Issues
 
-| # | File | Severity | Issue | Suggested fix / comment | Prior |
-|---|------|----------|-------|-------------------------|-------|
-| 1 | […/to/file.go](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | warning | ... | ... | new |
+| # | File | Issue |
+|---|------|-------|
+| 1 | […/to/file.go](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | 🟡 L42 Short headline of the problem |
+
+🔴 critical  🟡 warning  🔵 suggestion
+
+**1. 🟡 warning · file.go:42 · new**
+Full sentence on what is wrong and why it matters.
+Fix: what the author should do.
 ```
 
 If there are no issues, replace the table with "No issues found."
 
 ### Table rules
 
+The table must stay narrow so it fits a laptop terminal. Keep every cell short and put the long text in the details list below the table, which grows downward instead of sideways.
+
+- **Columns**: exactly three: `#`, `File`, `Issue`. Never add columns.
 - **Rows**: one row per finding in the synthesis. Do not merge or split findings, so the row counts match the synthesis stats. Batched documentation drift items stay one row each.
 - **Order**: sort rows by file in the order files appear in `input.txt` (for a PR, this matches GitHub's "Files changed" tab). Within a file, sort by line number. Number rows after sorting.
-- **File link (PR)**: always a full URL: `https://github.com/<OWNER_REPO>/blob/<HEAD_SHA>/<path>#L<line>`. For a range use `#L<start>-L<end>`. If there is no line, link the file without an anchor. The link text is the last two path segments with a leading `…/`, e.g. `…/pkg/file.go`, with no line number. If the path has two segments or fewer, show it as is. If the text would be longer than 40 characters, keep only the file name, e.g. `file.go`. The URL keeps the full path and line anchor.
-- **File (branch or files)**: plain `path:line` in backticks, with the path shortened by the same rule as the PR link text (last two segments with a leading `…/`, or only the file name if over 40 characters). Drop the `Prior` column.
-- **Severity**: `critical`, `warning`, or `suggestion`, taken from the synthesis.
-- **Issue**: one or two plain sentences on what is wrong and why it matters.
-- **Suggested fix / comment**: one or two plain sentences, or a short inline code snippet, that the author can act on.
-- **Prior**: `new`, or `raised by @login` when an existing comment covers the same point. Add `(resolved)` if that thread is resolved.
+- **File (PR)**: a link to the full URL `https://github.com/<OWNER_REPO>/blob/<HEAD_SHA>/<path>#L<line>`. For a range use `#L<start>-L<end>`. If there is no line, link the file without an anchor. The link text is the last two path segments with a leading `…/`, for example `…/pkg/file.go`, with no line number. If the path has two segments or fewer, show it as is. If the text would be longer than 40 characters, keep only the file name. The URL keeps the full path and line anchor.
+- **File (branch or files)**: the same shortened path in backticks, with no link.
+- **Issue cell**: `<severity emoji> L<line> <headline>`. Use `L<start>-<end>` for a range and leave out the line if there is none. The headline is at most 60 characters, plain words, no trailing period. It names the problem, not the reason.
+- **Severity emoji**: 🔴 critical, 🟡 warning, 🔵 suggestion, taken from the synthesis. Print the legend line once under the table.
 - Escape `|` inside cells as `\|`. Do not put line breaks inside cells.
+
+### Details list
+
+After the legend, write one block per row, in the same order and with the same number:
+
+```
+**<n>. <emoji> <severity> · <file name>:<line> · <prior>**
+<One or two plain sentences on what is wrong and why it matters.>
+Fix: <one or two plain sentences, or a short inline code snippet, the author can act on.>
+```
+
+- Always spell out the severity word, so color is never the only signal.
+- `<prior>` is `new`, or `raised by @login` when an existing comment covers the same point. Add `(resolved)` if that thread is resolved. For a branch or files review, leave `<prior>` and its leading `·` out.
 
 ## Writing style
 
