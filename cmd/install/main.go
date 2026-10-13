@@ -37,16 +37,12 @@ func run(args []string) error {
 	dryRun := fl.Bool("dry-run", false, "show what would change without writing")
 	force := fl.Bool("force", false, "replace or remove a directory that peer-pressure did not install")
 	uninstall := fl.Bool("uninstall", false, "remove the skill from every target")
-	showVersion := fl.Bool("version", false, "print the version and exit")
+	status := fl.Bool("status", false, "show the installed version and hash, and the latest release")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
 
 	version := buildVersion()
-	if *showVersion {
-		fmt.Println(version)
-		return nil
-	}
 
 	targets := []string(dirs)
 	if len(targets) == 0 {
@@ -54,6 +50,12 @@ func run(args []string) error {
 		if targets, err = defaultTargets(); err != nil {
 			return err
 		}
+	}
+
+	if *status {
+		latest, err := fetchLatest()
+		printStatus(os.Stdout, targets, latest, err)
+		return nil
 	}
 
 	opts := install.Options{Source: source, Version: version, DryRun: *dryRun, Force: *force}

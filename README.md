@@ -21,13 +21,19 @@ It installs to:
 
 Run the same command again to update. It replaces the copy it installed earlier and prints the old and new version.
 
+To see what is installed and whether a newer release exists, add `-status`:
+
+```sh
+go run github.com/iamrz1/peer-pressure/cmd/install@latest -status
+```
+
 | Flag | Effect |
 |---|---|
 | `-dir <path>` | Install into this skills directory instead of the defaults. Repeat for several. |
 | `-dry-run` | Show what would change. |
 | `-uninstall` | Remove the skill. |
 | `-force` | Replace or remove a directory that peer-pressure did not install. |
-| `-version` | Print the installer version. |
+| `-status` | Show the installed version and hash for each target, and the latest release. Changes nothing. |
 
 Safety rules of the installer:
 

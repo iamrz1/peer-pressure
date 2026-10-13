@@ -272,3 +272,31 @@ func treeHash(files []file) string {
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+// Presence tells whether a skill directory exists and who owns it.
+type Presence int
+
+// Possible values for Presence.
+const (
+	NotInstalled Presence = iota
+	// Ours means the directory carries this package's marker.
+	Ours
+	// NotOurs means something else occupies the name.
+	NotOurs
+)
+
+// Lookup reports what is installed at dir/<name> without changing anything.
+// The marker is only filled in when the result is Ours.
+func Lookup(name, dir string) (Marker, Presence, error) {
+	m, state, err := inspect(filepath.Join(dir, name))
+	if err != nil {
+		return Marker{}, NotInstalled, err
+	}
+	switch state {
+	case stateOwned:
+		return m, Ours, nil
+	case stateForeign:
+		return Marker{}, NotOurs, nil
+	}
+	return Marker{}, NotInstalled, nil
+}
