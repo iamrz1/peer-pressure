@@ -1,0 +1,9 @@
+diff --git a/pkg/a.go b/pkg/a.go
+index 1111111..2222222 100644
+--- a/pkg/a.go
++++ b/pkg/a.go
+@@ -10,3 +10,5 @@ func f() {
+ 	keep()
++	one()
++	two()
+ 	end()

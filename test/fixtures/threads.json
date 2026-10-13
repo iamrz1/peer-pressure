@@ -1,0 +1,5 @@
+{"summary":"Looks fine overall.","threads":[
+ {"path":"pkg/a.go","line":12,"startLine":11,"body":"inline multi-line"},
+ {"path":"pkg/a.go","line":99,"body":"outside the diff"},
+ {"path":"pkg/other.go","line":1,"body":"file not in diff"}
+]}

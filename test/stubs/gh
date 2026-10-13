@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Minimal gh stub for tests. Records API calls in $GH_STUB_LOG.
+set -euo pipefail
+case "$1 $2" in
+  "repo view") echo "octo/demo" ;;
+  "pr view")
+    if [[ "$*" == *headRefOid* && "$*" == *--jq* ]]; then echo "abc123"; else
+      echo '{"title":"t","body":"b","url":"u","headRefOid":"abc123","headRefName":"h","baseRefName":"main"}'; fi ;;
+  "pr diff") cat "$GH_STUB_DIFF" ;;
+  "api graphql") cat "$GH_STUB_THREADS" ;;
+  "api --method") echo "$*" >>"${GH_STUB_LOG:-/dev/null}"; cat >>"${GH_STUB_LOG:-/dev/null}"; echo '{"html_url":"https://github.com/octo/demo/pull/1#pullrequestreview-1"}' ;;
+  *) echo "gh stub: unhandled: $*" >&2; exit 1 ;;
+esac

@@ -1,0 +1,30 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      # Ask the Go module proxy for the new tag now, so `go run ...@latest`
+      # finds it right away instead of after the first user request.
+      - uses: actions/setup-go@v5
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          go-version: stable
+      - name: warm the Go proxy
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m "github.com/iamrz1/peer-pressure@${TAG}"

@@ -1,0 +1,1 @@
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"totalCount":1,"nodes":[{"isResolved":true,"isOutdated":false,"path":"pkg/a.go","line":11,"comments":{"nodes":[{"author":{"login":"alice"},"body":"line one\nline two"}]}}]}}}}}
