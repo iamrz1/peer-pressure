@@ -107,7 +107,7 @@ Write your review to the output path provided. Use this synthesis structure:
 ### [Short Issue Title]
 **File:** path/to/file:line
 **Severity:** critical
-**Category:** correctness | security | architecture | maintainability | compatibility | performance
+**Category:** correctness | security | architecture | docs | maintainability | compatibility | performance
 **What is wrong:** [1-2 sentences]
 **Impact:** [1 sentence]
 **Recommended change:** [1-2 sentences]

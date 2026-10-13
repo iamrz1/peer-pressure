@@ -51,10 +51,10 @@ Write the summary to the output path in your prompt. Use this structure:
 
 | # | File | Review |
 |---|------|--------|
-| 1 | […/to/file.go](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | 🟡 (L42): Short headline of the problem |
+| 1 | […/to/file.go](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | 🟡 🐛 (L42): Short headline of the problem |
 |   |   | 🟢 short action the author can take |
 
-🔴 critical  🟡 warning  🔵 suggestion  🟢 fix
+🔴 critical  🟡 warning  🔵 suggestion  🟢 fix  |  🐛 correctness
 ```
 
 If there are no issues, replace the table with "No issues found."
@@ -65,9 +65,22 @@ The table must stay narrow so it fits a laptop terminal, and it must never wrap 
 
 - **Columns**: exactly three: `#`, `File`, `Review`.
 - **Two rows per issue.**
-  - Row 1: the number, the file, and `<emoji> (L<line>): <headline>`.
+  - Row 1: the number, the file, and `<severity emoji> <source icons> (L<line>): <headline>`.
   - Row 2: empty `#` and `File` cells, and `🟢 <short fix>`. The green circle replaces the word "Fix". Do not write the word.
-- **Severity emoji** comes first in the Review cell, with no severity word: 🔴 critical, 🟡 warning, 🔵 suggestion, taken from the synthesis. Print the legend line once under the table: `🔴 critical  🟡 warning  🔵 suggestion  🟢 fix`.
+- **Severity emoji** comes first in the Review cell, with no severity word: 🔴 critical, 🟡 warning, 🔵 suggestion, taken from the synthesis. Print the legend line once under the table: `🔴 critical  🟡 warning  🔵 suggestion  🟢 fix`, then ` | ` and the source icons that appear in the table, each with its name.
+- **Source icons** come right after the severity emoji. Take the source from the finding's `Sources:` line in the synthesis (full pipeline) or its `**Category:**` line (quick review). Items under Documentation Drift are `docs`. Map each name to one icon:
+
+  | Source | Icon |
+  |---|---|
+  | correctness | 🐛 |
+  | security | 🔒 |
+  | performance | ⚡ |
+  | architecture | 📐 |
+  | compatibility | 🔌 |
+  | maintainability | 🧹 |
+  | docs | 📚 |
+
+  Show at most two icons. When a finding has more than two sources, keep the first two in the order of this table. If the source is `unknown` or missing, show no icon. Never guess a source.
 - **Line**: `L<line>`, or `L<start>-<end>` for a range. If there is no line, write `<emoji> <headline>` with no parentheses.
 - **Headline**: at most 60 characters, plain words, no trailing period. It names the problem, not the reason.
 - **Fix**: at most 60 characters, one action. If the full fix is longer, write the short form here and put the full text under Details.

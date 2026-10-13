@@ -120,3 +120,41 @@ func TestNoStaleOrPrivateContent(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSummaryMapsEveryPerspectiveToAnIcon(t *testing.T) {
+	summary := skillFile(t, "references/pipeline/summary.md")
+	entries, err := fs.ReadDir(FS, Name+"/references/perspectives")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		perspective := strings.TrimSuffix(e.Name(), ".md")
+		if !strings.Contains(summary, "| "+perspective+" |") {
+			t.Errorf("summary.md has no icon row for the %q perspective", perspective)
+		}
+	}
+}
+
+func TestSynthesizerCarriesSources(t *testing.T) {
+	synth := skillFile(t, "references/pipeline/synthesizer.md")
+	if !strings.Contains(synth, "Sources:") {
+		t.Error("synthesizer.md must require a Sources line on every finding")
+	}
+	entries, err := fs.ReadDir(FS, Name+"/references/perspectives")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		perspective := strings.TrimSuffix(e.Name(), ".md")
+		if !strings.Contains(synth, "`"+perspective+"`") {
+			t.Errorf("synthesizer.md does not list the %q source name", perspective)
+		}
+	}
+	quick := skillFile(t, "references/pipeline/quick-reviewer.md")
+	for _, e := range entries {
+		perspective := strings.TrimSuffix(e.Name(), ".md")
+		if !strings.Contains(quick, perspective) {
+			t.Errorf("quick-reviewer.md Category list is missing %q", perspective)
+		}
+	}
+}
