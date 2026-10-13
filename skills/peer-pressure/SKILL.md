@@ -55,7 +55,7 @@ Otherwise `PRIOR_PREAMBLE` is empty.
 
 **Branch mode.** Find the base: `git rev-parse --abbrev-ref origin/HEAD` (fall back to `main`), then `git merge-base HEAD <that>`. Run `git diff <base> > "$SESSION_DIR/input.txt"`.
 
-**Files mode.** Write each file to `input.txt` under a `=== <path> ===` header. Paths may be relative to the repo or absolute. Say so and skip any path that does not exist.
+**Files mode.** Write each file to `input.txt` under a `=== <path> ===` header. Paths may be relative to the repo or absolute. Tell the user about any path that does not exist and skip it.
 
 If `input.txt` is empty, say "Nothing to review." and stop.
 
