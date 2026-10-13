@@ -52,9 +52,9 @@ Write the summary to the output path in your prompt. Use this structure:
 | # | File | Review |
 |---|------|--------|
 | 1 | […/to/file.go](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | 🟡 (L42): Short headline of the problem |
-|   |   | Fix: short action the author can take |
+|   |   | 🟢 short action the author can take |
 
-🔴 critical  🟡 warning  🔵 suggestion
+🔴 critical  🟡 warning  🔵 suggestion  🟢 fix
 ```
 
 If there are no issues, replace the table with "No issues found."
@@ -66,8 +66,8 @@ The table must stay narrow so it fits a laptop terminal, and it must never wrap 
 - **Columns**: exactly three: `#`, `File`, `Review`.
 - **Two rows per issue.**
   - Row 1: the number, the file, and `<emoji> (L<line>): <headline>`.
-  - Row 2: empty `#` and `File` cells, and `Fix: <short fix>`.
-- **Severity emoji** comes first in the Review cell, with no severity word: 🔴 critical, 🟡 warning, 🔵 suggestion, taken from the synthesis. Print the legend line once under the table.
+  - Row 2: empty `#` and `File` cells, and `🟢 <short fix>`. The green circle replaces the word "Fix". Do not write the word.
+- **Severity emoji** comes first in the Review cell, with no severity word: 🔴 critical, 🟡 warning, 🔵 suggestion, taken from the synthesis. Print the legend line once under the table: `🔴 critical  🟡 warning  🔵 suggestion  🟢 fix`.
 - **Line**: `L<line>`, or `L<start>-<end>` for a range. If there is no line, write `<emoji> <headline>` with no parentheses.
 - **Headline**: at most 60 characters, plain words, no trailing period. It names the problem, not the reason.
 - **Fix**: at most 60 characters, one action. If the full fix is longer, write the short form here and put the full text under Details.
