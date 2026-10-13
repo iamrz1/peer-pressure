@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/iamrz1/peer-pressure/compare/v0.2.0...v0.3.0) (2026-10-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* add -status flag and remove -version
+
+### Features
+
+* add -status flag and remove -version ([e77430c](https://github.com/iamrz1/peer-pressure/commit/e77430c19906bb21f45968fd46df64ed5618c5cf))
+* add a counts line, code spans and struck-through resolved threads ([7e494dc](https://github.com/iamrz1/peer-pressure/commit/7e494dc8dcc47d4780e130af6c15d7ac6b732f59))
+* carry finding sources through synthesis and show them as icons ([3863c25](https://github.com/iamrz1/peer-pressure/commit/3863c256aa38e944ac935c336c5ce9baf0813741))
+* narrow the summary table and move long text to a details list ([05aff8a](https://github.com/iamrz1/peer-pressure/commit/05aff8a9b290165a8a20157f67b78d151518d122))
+* narrow the summary table with a Review column and fix rows ([163561c](https://github.com/iamrz1/peer-pressure/commit/163561c2405fd19b04bdd910e5f49a598157fb2d))
+* put the fix in its own table row and rename the column to Review ([fd471ab](https://github.com/iamrz1/peer-pressure/commit/fd471abfbad43b53c48ce580327ba059c0da9be6))
+* use a green circle instead of the word Fix ([4f9034e](https://github.com/iamrz1/peer-pressure/commit/4f9034e643885fed7d0c58f3fab4fab789e02559))
+
 ## [0.2.0](https://github.com/iamrz1/peer-pressure/compare/v0.1.1...v0.2.0) (2026-10-13)
 
 
