@@ -15,6 +15,7 @@ If your prompt begins with a "Prior findings" preamble, reviewers were told to s
 
 1. Read all validated review files.
 2. Deduplicate. If several validators confirmed the same issue, merge them into one entry and note the agreement.
+   Keep the source of every finding. Each validated entry has an `Original reviewer(s)` line. Copy those perspective names. When you merge entries, use the union of their sources. Never guess a source.
 3. Batch non-critical documentation findings into one checklist (see below).
 4. Rank the rest by severity (critical, warning, suggestion).
 5. Within a severity, rank by confidence (high before medium).
@@ -58,6 +59,15 @@ Write your synthesis to the output path provided, using this structure:
 ```
 
 Be concise. No preamble or filler.
+
+## Sources
+
+The summary step shows an icon for the perspective that found each issue, so every finding needs its source.
+
+- End every finding in Critical Issues, Warnings and Suggestions with a line `Sources: <perspective>, <perspective>`.
+- End every Documentation Drift item with `(Sources: <perspective>)`. Use `docs` when the validated entry names no other source.
+- Use only these names, in lowercase: `correctness`, `security`, `architecture`, `docs`, `compatibility`, `performance`, `maintainability`.
+- If a validated entry has no source line, write `Sources: unknown`. Do not make one up.
 
 ## Response contract
 
