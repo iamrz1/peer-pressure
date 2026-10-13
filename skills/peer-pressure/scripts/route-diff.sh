@@ -20,7 +20,7 @@ awk -v threshold="$EFFECTIVE_SIZE_THRESHOLD" -v maxfiles="$MAX_LOGIC_FILES" '
 function reset() {
   added = 0; removed = 0; nonimport = 0; generated = 0
   stakes_auth = 0; stakes_migration = 0; stakes_concurrency = 0
-  in_hunk = 0; deleted = 0
+  in_hunk = 0
 }
 
 function classify(path,    lower) {
@@ -72,8 +72,7 @@ BEGIN { effective = 0; logic_files = 0; discounted = 0; surfaces = ""; path = ""
 }
 
 !in_hunk && /^\+\+\+ / {
-  if ($0 == "+++ /dev/null") { deleted = 1 }
-  else { path = substr($0, 5); sub(/^b\//, "", path) }
+  if ($0 != "+++ /dev/null") { path = substr($0, 5); sub(/^b\//, "", path) }
   next
 }
 
@@ -91,11 +90,9 @@ in_hunk {
   if (c == "+" || c == "-") {
     if (c == "+") added++; else removed++
     if (body !~ /^[ \t]*$/ && body !~ /^[ \t]*(import|from|use|require|#include)([^A-Za-z0-9_]|$)/) nonimport++
-    if (c == "+") {
-      low = tolower(body)
-      if (low ~ /(auth|credential|token|secret|password|oauth|scram|crypto|encrypt|decrypt|signing)/ || body ~ /(^|[^A-Za-z])(TLS|IAM)([^A-Za-z]|$)/) stakes_auth = 1
-      if (body ~ /(CREATE INDEX|ALTER TABLE|DROP[^A-Za-z]|invalidateCache|cache\.Invalidate)/) stakes_migration = 1
-    }
+    low = tolower(body)
+    if (low ~ /(auth|credential|token|secret|password|oauth|scram|crypto|encrypt|decrypt|signing)/ || body ~ /(^|[^A-Za-z])(TLS|IAM)([^A-Za-z]|$)/) stakes_auth = 1
+    if (body ~ /(CREATE INDEX|ALTER TABLE|DROP[^A-Za-z]|invalidateCache|cache\.Invalidate)/) stakes_migration = 1
     if (body ~ /(go func|sync\.|<-|Mutex|WaitGroup|atomic\.)/) stakes_concurrency = 1
   }
   if (c == "+" || c == " ") {

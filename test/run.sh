@@ -26,6 +26,7 @@ route() { "$scripts/route-diff.sh" "$root/test/fixtures/$1.diff" | sed -n "s/^$2
 
 check "small diff is quick" quick "$(route small decision)"
 check "auth path is high stakes" stakes "$(route stakes reason)"
+check "removed auth line is high stakes" stakes "$(route removed-auth reason)"
 check "generated lines are discounted" 0 "$(route generated effective_logic_lines)"
 check "large diff is full" effective-size "$(route large reason)"
 check "import-only change counts 0" 0 "$(route imports effective_logic_lines)"

@@ -58,6 +58,7 @@ If there are no issues, replace the table with "No issues found."
 
 ### Table rules
 
+- **Rows**: one row per finding in the synthesis. Do not merge or split findings, so the row counts match the synthesis stats. Batched documentation drift items stay one row each.
 - **Order**: sort rows by file in the order files appear in `input.txt` (for a PR, this matches GitHub's "Files changed" tab). Within a file, sort by line number. Number rows after sorting.
 - **File link (PR)**: always a full URL: `https://github.com/<OWNER_REPO>/blob/<HEAD_SHA>/<path>#L<line>`. For a range use `#L<start>-L<end>`. If there is no line, link the file without an anchor. The link text is the last two path segments with a leading `…/`, e.g. `…/pkg/file.go`, with no line number. If the path has two segments or fewer, show it as is. If the text would be longer than 40 characters, keep only the file name, e.g. `file.go`. The URL keeps the full path and line anchor.
 - **File (branch or files)**: plain `path:line` in backticks, with the path shortened by the same rule as the PR link text (last two segments with a leading `…/`, or only the file name if over 40 characters). Drop the `Prior` column.

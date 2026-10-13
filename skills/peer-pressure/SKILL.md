@@ -17,7 +17,7 @@ You orchestrate a review pipeline. Reviewers work alone, then validators try to 
 
 Read the user's request for a target and flags.
 
-- `--full`: force the full pipeline. `--quick`: force the quick review. If both are given, say they conflict and stop.
+- `--full`: force the full pipeline. `--quick`: force the quick review. If both are given, say they conflict and stop. A flag always beats automatic routing, also in files mode.
 - A number is a PR (`MODE=pr`).
 - One or more file paths are `MODE=files`.
 - Nothing is `MODE=branch`: review the current branch against its base.
@@ -55,7 +55,7 @@ Otherwise `PRIOR_PREAMBLE` is empty.
 
 **Branch mode.** Find the base: `git rev-parse --abbrev-ref origin/HEAD` (fall back to `main`), then `git merge-base HEAD <that>`. Run `git diff <base> > "$SESSION_DIR/input.txt"`.
 
-**Files mode.** Write each file to `input.txt` under a `=== <path> ===` header.
+**Files mode.** Write each file to `input.txt` under a `=== <path> ===` header. Paths may be relative to the repo or absolute. Say so and skip any path that does not exist.
 
 If `input.txt` is empty, say "Nothing to review." and stop.
 
@@ -75,10 +75,20 @@ Otherwise leave `CONTEXT` empty. Only reviewers get `CONTEXT`. Validators do not
 ## Step 4: Choose quick or full
 
 - `--quick`: quick review.
-- `--full` or `MODE=files`: full pipeline.
+- `--full`: full pipeline.
+- `MODE=files` without a flag: full pipeline.
 - Otherwise run `"$SKILL_DIR/scripts/route-diff.sh" "$SESSION_DIR/input.txt"`, print its `message` line to the user, and follow its `decision`.
 
-**Quick review.** Run one reviewer with `references/pipeline/quick-reviewer.md`, prompt: "<CONTEXT><PRIOR_PREAMBLE>You are reviewing <INPUT_DESCRIPTION>. Read <SESSION_DIR>/input.txt. Write your review to <SESSION_DIR>/synthesis.md." Then go to Step 8.
+**Quick review.** Run one reviewer as a general-purpose subagent, or yourself if you cannot start subagents. Prompt:
+
+```
+Read <SKILL_DIR>/references/pipeline/quick-reviewer.md and follow it exactly.
+<CONTEXT><PRIOR_PREAMBLE>
+You are reviewing <INPUT_DESCRIPTION>. Read the content at <SESSION_DIR>/input.txt.
+Write your review to <SESSION_DIR>/synthesis.md.
+```
+
+Then go to Step 8.
 
 ## Step 5: Reviewers (full pipeline)
 
@@ -145,7 +155,7 @@ OWNER_REPO=<OWNER_REPO>, PR_NUMBER=<PR_NUMBER>, HEAD_SHA=<HEAD_SHA>. Write the s
 
 Branch and files mode: the same, but say "The input is <INPUT_DESCRIPTION>", leave out the PR fields, and read only `synthesis.md` and `input.txt`.
 
-If the summary fails, warn the user and show the synthesis stats instead.
+Some hosts do not let subagents write report files. If `summary.md` is missing but the agent returned the summary as text, use that text. Do not retry the write or write the file around the block. If there is no summary at all, warn the user and show the synthesis stats instead.
 
 ## Step 9: Present
 
@@ -153,7 +163,7 @@ Always show the review before doing anything else.
 
 - Print the summary exactly as returned, without its path line.
 - Say where the session files are, which pipeline ran (quick, or full with the mode), and which reviewers failed.
-- Show the synthesis stats.
+- Show the synthesis stats. If the table in the summary has a different count, say the table is the one to trust and mention the difference.
 - If there are no issues, say so and stop.
 
 Then ask:
