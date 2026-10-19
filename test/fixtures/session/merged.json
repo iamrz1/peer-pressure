@@ -1,0 +1,6 @@
+[
+  {"id": "F1", "title": "Close ignores the flush error", "file": "README.md", "line": 2, "sources": ["docs"], "problem": "Stale claim.", "impact": "Misleads readers.", "fix": "Update the text."},
+  {"id": "F2", "title": "Flush error is dropped", "file": "pkg/a.go", "line": 2, "sources": ["correctness", "architecture"], "problem": "Errors vanish.", "impact": "Data loss.", "fix": "Return the error."},
+  {"id": "F3", "title": "Claimed bug does not exist", "file": "pkg/a.go", "line": 1, "sources": ["maintainability"], "problem": "Wrong.", "impact": "None.", "fix": "None."},
+  {"id": "F4", "title": "Rename helper", "file": "pkg/a.go", "line": 2, "sources": ["maintainability"], "problem": "Vague name.", "impact": "Harder to read.", "fix": "Rename it."}
+]

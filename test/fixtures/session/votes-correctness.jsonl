@@ -1,0 +1,5 @@
+{"id": "F1", "verdict": "plausible", "score": 0, "note": "ok"}
+{"id": "F2", "verdict": "confirmed", "score": 3, "note": "real"}
+{"id": "F3", "verdict": "disproved", "note": "handled at line 9"}
+this line is not json
+{"id": "F4", "verdict": "confirmed", "score": 1, "note": "fine"}

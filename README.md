@@ -63,17 +63,18 @@ PR mode needs the [GitHub CLI](https://cli.github.com/) (`gh`, logged in) and `j
 ## How it works
 
 ```
-input -> route -> 7 reviewers -> 7 validators -> synthesis -> summary -> you decide
-                                                                           |-> apply fixes
-                                                                           |-> pending PR review
+input -> route -> 7 reviewers -> merge -> 7 validators -> score -> triage -> summary -> you decide
+                                                                                       |-> apply fixes
+                                                                                       |-> pending PR review
 ```
 
 1. **Route.** A script weighs the diff. Generated files and import-only changes count as nothing, tests as half, config as a quarter. Small changes get one quick reviewer. Big or high-stakes changes (auth, migrations, concurrency, public contracts) get the full pipeline.
 2. **Review.** Each reviewer has one perspective and works alone.
-3. **Validate.** Each validator reads every review and tries to disprove each claim. Wrong severity, wrong facts and already-handled cases get dropped.
-4. **Synthesize.** One document with ranked, deduplicated findings.
-5. **Summarize.** What the change does, how well, and an issue table. In PR mode the File column links to the exact line.
-6. **You decide.** Apply fixes locally, post a pending review, both, or nothing.
+3. **Merge.** One agent lists the distinct issues from all reviews and gives each an ID. Reviewer severities are dropped on purpose, so validators are not anchored by them.
+4. **Validate.** Each validator checks every issue against the real code and tries to disprove it. It also gives each surviving issue a 0 to 3 score from its own lens. A script keeps an issue when more validators kept it than dropped it, sums the lens scores, and sets the label from the highest single score: 3 is critical, 2 is warning, anything lower is suggestion. A sum alone would let a style nit that every lens mentions outrank a data-loss bug that only one lens sees.
+5. **Triage.** One agent decides how hard to push each issue: `Before merge`, `This PR`, `Follow-up` or `Optional`. Severity says how bad the problem is. Urgency also weighs the size of the fix, how far the problem reaches, and whether the code is new in this change.
+6. **Summarize.** What the change does, how well, and an issue table with file, severity and score, urgency, review and fix. In PR mode the File column links to the exact line.
+7. **You decide.** Apply fixes locally, post a pending review, both, or nothing.
 
 If your agent can start subagents (Claude Code can), reviewers and validators run in parallel with separate contexts. Otherwise they run one after another in one context. That works but is slower, and the reviewers can influence each other, so quality drops a little.
 
@@ -93,8 +94,8 @@ On a PR that already has review threads, reviewers skip points that are already 
 skills/peer-pressure/
   SKILL.md                    the orchestrator
   references/perspectives/    one prompt per reviewer
-  references/pipeline/        validator, synthesizer, summary, planner, applier, formatter
-  scripts/                    route-diff.sh, pr-context.sh, post-pending-review.sh
+  references/pipeline/        merger, validator, triage, summary, planner, applier, formatter
+  scripts/                    route-diff.sh, score-findings.sh, build-report.sh, pr-context.sh, post-pending-review.sh
 cmd/install/                  the installer
 internal/install/             copy and replace logic
 test/                         offline script tests with a stubbed gh

@@ -135,26 +135,51 @@ func TestSummaryMapsEveryPerspectiveToAnIcon(t *testing.T) {
 	}
 }
 
-func TestSynthesizerCarriesSources(t *testing.T) {
-	synth := skillFile(t, "references/pipeline/synthesizer.md")
-	if !strings.Contains(synth, "Sources:") {
-		t.Error("synthesizer.md must require a Sources line on every finding")
-	}
+func perspectiveNames(t *testing.T) []string {
+	t.Helper()
 	entries, err := fs.ReadDir(FS, Name+"/references/perspectives")
 	if err != nil {
 		t.Fatal(err)
 	}
+	var names []string
 	for _, e := range entries {
-		perspective := strings.TrimSuffix(e.Name(), ".md")
-		if !strings.Contains(synth, "`"+perspective+"`") {
-			t.Errorf("synthesizer.md does not list the %q source name", perspective)
+		names = append(names, strings.TrimSuffix(e.Name(), ".md"))
+	}
+	return names
+}
+
+func TestPromptsNameEveryPerspective(t *testing.T) {
+	merger := skillFile(t, "references/pipeline/merger.md")
+	validator := skillFile(t, "references/pipeline/validator.md")
+	quick := skillFile(t, "references/pipeline/quick-reviewer.md")
+	for _, perspective := range perspectiveNames(t) {
+		if !strings.Contains(merger, "`"+perspective+"`") {
+			t.Errorf("merger.md does not list the %q source name", perspective)
+		}
+		if !strings.Contains(validator, "| "+perspective+" |") {
+			t.Errorf("validator.md has no scoring row for the %q lens", perspective)
+		}
+		if !strings.Contains(quick, "`"+perspective+"`") {
+			t.Errorf("quick-reviewer.md does not list the %q source name", perspective)
 		}
 	}
-	quick := skillFile(t, "references/pipeline/quick-reviewer.md")
-	for _, e := range entries {
-		perspective := strings.TrimSuffix(e.Name(), ".md")
-		if !strings.Contains(quick, perspective) {
-			t.Errorf("quick-reviewer.md Category list is missing %q", perspective)
+}
+
+func TestSummaryTableColumns(t *testing.T) {
+	summary := skillFile(t, "references/pipeline/summary.md")
+	if !strings.Contains(summary, "| # | File | Sev | Urgency | Review | Fix |") {
+		t.Error("summary.md must define the six-column table")
+	}
+}
+
+func TestUrgencyLevelsAreConsistent(t *testing.T) {
+	levels := []string{"before-merge", "this-pr", "follow-up", "optional"}
+	for _, f := range []string{"references/pipeline/triage.md", "references/pipeline/summary.md", "scripts/build-report.sh"} {
+		doc := skillFile(t, f)
+		for _, level := range levels {
+			if !strings.Contains(doc, level) {
+				t.Errorf("%s does not mention the urgency level %q", f, level)
+			}
 		}
 	}
 }
