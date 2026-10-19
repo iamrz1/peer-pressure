@@ -173,7 +173,7 @@ func TestSummaryTableColumns(t *testing.T) {
 }
 
 func TestUrgencyLevelsAreConsistent(t *testing.T) {
-	levels := []string{"before-merge", "this-pr", "follow-up", "optional"}
+	levels := []string{"insist", "ask", "author", "optional"}
 	for _, f := range []string{"references/pipeline/triage.md", "references/pipeline/summary.md", "scripts/build-report.sh"} {
 		doc := skillFile(t, f)
 		for _, level := range levels {

@@ -72,7 +72,7 @@ input -> route -> 7 reviewers -> merge -> 7 validators -> score -> triage -> sum
 2. **Review.** Each reviewer has one perspective and works alone.
 3. **Merge.** One agent lists the distinct issues from all reviews and gives each an ID. Reviewer severities are dropped on purpose, so validators are not anchored by them.
 4. **Validate.** Each validator checks every issue against the real code and tries to disprove it. It also gives each surviving issue a 0 to 3 score from its own lens. A script keeps an issue when more validators kept it than dropped it, sums the lens scores, and sets the label from the highest single score: 3 is critical, 2 is warning, anything lower is suggestion. A sum alone would let a style nit that every lens mentions outrank a data-loss bug that only one lens sees.
-5. **Triage.** One agent decides how hard to push each issue: `Before merge`, `This PR`, `Follow-up` or `Optional`. Severity says how bad the problem is. Urgency also weighs the size of the fix, how far the problem reaches, and whether the code is new in this change.
+5. **Triage.** One agent decides how hard to push each issue: `Insist`, `Ask`, `Up to author` or `Optional`. Severity says how bad the problem is. Urgency also weighs the size of the fix, how far the problem reaches, and whether the code is new in this change.
 6. **Summarize.** What the change does, how well, and an issue table with file, severity and score, urgency, review and fix. In PR mode the File column links to the exact line.
 7. **You decide.** Apply fixes locally, post a pending review, both, or nothing.
 

@@ -5,7 +5,7 @@ You write the final, human-facing summary of a review. The reader is the author 
 
 Your prompt gives you:
 
-1. A path to `report.json`: the surviving findings, already scored, labeled, ordered and numbered. Fields per finding: `n`, `file`, `line`, `title`, `sources`, `problem`, `impact`, `fix`, `label` (`critical`, `warning` or `suggestion`), `score`, `urgency` (`before-merge`, `this-pr`, `follow-up`, `optional`, or empty), `reason`. Top-level: `stats` and `ready`.
+1. A path to `report.json`: the surviving findings, already scored, labeled, ordered and numbered. Fields per finding: `n`, `file`, `line`, `title`, `sources`, `problem`, `impact`, `fix`, `label` (`critical`, `warning` or `suggestion`), `score`, `urgency` (`insist`, `ask`, `author`, `optional`, or empty), `reason`. Top-level: `stats` and `ready`.
 2. A path to `input.txt`: the diff or file contents under review.
 3. _(PR only)_ A path to `pr-meta.json`: PR title, body, URL, top-level comments, and review summaries.
 4. _(PR only, optional)_ A path to `prior-review.md`: existing inline review threads, with author, resolved, and outdated tags.
@@ -52,7 +52,7 @@ Write the summary to the output path in your prompt. Use this structure:
 
 | # | File | Sev | Urgency | Review | Fix |
 |---|------|-----|---------|--------|-----|
-| 1 | [path/to/file.go:42](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | 🟡 4 | This PR | 🐛 Two or three sentences on the problem and why it matters. | One to three sentences on the fix. |
+| 1 | [path/to/file.go:42](https://github.com/OWNER/REPO/blob/HEAD_SHA/path/to/file.go#L42) | 🟡 (4) | Ask | 🐛 Two or three sentences on the problem and why it matters. | One to three sentences on the fix. |
 
 🔴 critical  🟡 warning  🔵 suggestion  |  🐛 correctness
 ```
@@ -79,8 +79,8 @@ The table has one row per finding, in the order of `report.json`. Cells wrap in 
   - PR: a link `[<path>:<line>](https://github.com/<OWNER_REPO>/blob/<HEAD_SHA>/<path>#L<line>)`. The link text is the full path, then `:` and the line. For a range, use `:<start>-<end>` in the text and `#L<start>-L<end>` in the URL, with the `L` repeated (`#L93-L95`, never `#L93-95`).
   - Branch or files: the full path and line in backticks, with no link.
   - If there is no line, show the path alone and link it without an anchor.
-- **`Sev`**: the severity emoji and the score, for example `🔴 7`. The emoji comes from `label`: 🔴 critical, 🟡 warning, 🔵 suggestion. The number is `score`. Never write the severity word.
-- **`Urgency`**: from `urgency`: `before-merge` is `Before merge`, `this-pr` is `This PR`, `follow-up` is `Follow-up`, `optional` is `Optional`. If it is empty, write `-`.
+- **`Sev`**: the severity emoji and the score in parentheses, for example `🔴 (7)`. The emoji comes from `label`: 🔴 critical, 🟡 warning, 🔵 suggestion. The number is `score`. Never write the severity word.
+- **`Urgency`**: from `urgency`: `insist` is `Insist`, `ask` is `Ask`, `author` is `Up to author`, `optional` is `Optional`. If it is empty, write `-`.
 - **`Review`**: the source icons, a space, then the finding's `problem` and `impact` as two or three plain sentences. Put identifiers in backticks. Shorten a text that is longer than three sentences, and never add facts.
 - **`Fix`**: the finding's `fix` as one to three plain sentences, with identifiers in backticks.
 - **Source icons** come first in the `Review` cell. Take them from `sources`. Map each name to one icon:
@@ -103,14 +103,14 @@ The table has one row per finding, in the order of `report.json`. Cells wrap in 
 
 ### Details (optional)
 
-For each finding with urgency `before-merge`, add a short entry under the legend that gives the `reason`:
+For each finding with urgency `insist`, add a short entry under the legend that gives the `reason`:
 
 ```
 **<n>. <file name>:<line>**
 <The reason, in one plain sentence.>
 ```
 
-Skip the list when no finding is `before-merge`.
+Skip the list when no finding is `insist`.
 
 ## Writing style
 

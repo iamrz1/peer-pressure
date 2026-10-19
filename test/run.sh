@@ -69,7 +69,7 @@ check "trivial from a lens that did not find it is no drop vote" 0 "$(jq '.findi
 check "all-confirm gives high confidence" high "$(jq -r '.findings[0].confidence' "$session/scored.json")"
 
 "$scripts/build-report.sh" "$session" >"$tmp/report.out"
-check "urgency joins by id" "before-merge follow-up" "$(jq -r '[.findings[0].urgency, .findings[2].urgency] | join(" ")' "$session/report.json")"
+check "urgency joins by id" "insist author" "$(jq -r '[.findings[0].urgency, .findings[2].urgency] | join(" ")' "$session/report.json")"
 check "unknown urgency is blanked" "" "$(jq -r '.findings[1].urgency' "$session/report.json")"
 check "blocking urgency means not ready" false "$(jq '.ready' "$session/report.json")"
 check "synthesis lists findings outside the drift section" 2 "$(grep -c '^### ' "$session/synthesis.md")"

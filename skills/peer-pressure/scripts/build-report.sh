@@ -33,19 +33,19 @@ jq --slurpfile t "$triage" '
       . as $f
       | (($T | map(select(.id == $f.id)) | .[0]) // {}) as $u
       | . + {
-          urgency: (if (($u.urgency // "") | IN("before-merge", "this-pr", "follow-up", "optional")) then $u.urgency else "" end),
+          urgency: (if (($u.urgency // "") | IN("insist", "ask", "author", "optional")) then $u.urgency else "" end),
           reason: ($u.reason // "")
         })
   | (.findings) as $F
   | ($F | map(select(.urgency != "")) | length) as $triaged
-  | ($F | map(select(.urgency == "before-merge")) | length) as $blocking
+  | ($F | map(select(.urgency == "insist")) | length) as $blocking
   | ($F | map(select(.label == "critical")) | length) as $critical
   | . + {
       stats: {
         critical: $critical,
         warning: ($F | map(select(.label == "warning")) | length),
         suggestion: ($F | map(select(.label == "suggestion")) | length),
-        before_merge: $blocking,
+        insist: $blocking,
         triaged: $triaged
       },
       ready: (if $triaged > 0 then $blocking == 0 else $critical == 0 end)
@@ -89,4 +89,4 @@ jq -r --arg today "$(date +%Y-%m-%d)" '
     + (if ($clean | length) > 0 then "No issues from: \($clean | join(", ")).\n" else "Every lens found something to report.\n" end)
 ' "$dir/report.json" >"$dir/synthesis.md"
 
-jq -r '"\(.stats.critical) critical, \(.stats.warning) warnings, \(.stats.suggestion) suggestions, \(.stats.before_merge) before merge"' "$dir/report.json"
+jq -r '"\(.stats.critical) critical, \(.stats.warning) warnings, \(.stats.suggestion) suggestions, \(.stats.insist) insist"' "$dir/report.json"
