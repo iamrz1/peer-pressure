@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0](https://github.com/iamrz1/peer-pressure/compare/v0.3.0...v0.4.0) (2026-10-20)
+
+
+### Features
+
+* draw the issues table with a script at a fixed width ([d47f85d](https://github.com/iamrz1/peer-pressure/commit/d47f85da5cadc8dda18e6338b0038b16716874ec))
+* score findings in validators and add an urgency step ([ee06910](https://github.com/iamrz1/peer-pressure/commit/ee069100a967d16aeaf9e84173dd4e12c9820c17))
+* score findings in validators and add an urgency step ([fe79457](https://github.com/iamrz1/peer-pressure/commit/fe79457fd33ddff18805c2bde718f4cb0a3da582))
+* show the score in parentheses and name urgency by reviewer stance ([a97d62b](https://github.com/iamrz1/peer-pressure/commit/a97d62b656836e8d3a951874808f9f6aaa59acb1))
+
 ## [0.3.0](https://github.com/iamrz1/peer-pressure/compare/v0.2.0...v0.3.0) (2026-10-13)
 
 
