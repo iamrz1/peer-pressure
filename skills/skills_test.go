@@ -121,40 +121,60 @@ func TestNoStaleOrPrivateContent(t *testing.T) {
 	}
 }
 
-func TestSummaryMapsEveryPerspectiveToAnIcon(t *testing.T) {
-	summary := skillFile(t, "references/pipeline/summary.md")
+func perspectiveNames(t *testing.T) []string {
+	t.Helper()
 	entries, err := fs.ReadDir(FS, Name+"/references/perspectives")
 	if err != nil {
 		t.Fatal(err)
 	}
+	var names []string
 	for _, e := range entries {
-		perspective := strings.TrimSuffix(e.Name(), ".md")
-		if !strings.Contains(summary, "| "+perspective+" |") {
-			t.Errorf("summary.md has no icon row for the %q perspective", perspective)
+		names = append(names, strings.TrimSuffix(e.Name(), ".md"))
+	}
+	return names
+}
+
+func TestPromptsNameEveryPerspective(t *testing.T) {
+	merger := skillFile(t, "references/pipeline/merger.md")
+	validator := skillFile(t, "references/pipeline/validator.md")
+	quick := skillFile(t, "references/pipeline/quick-reviewer.md")
+	for _, perspective := range perspectiveNames(t) {
+		if !strings.Contains(merger, "`"+perspective+"`") {
+			t.Errorf("merger.md does not list the %q source name", perspective)
+		}
+		if !strings.Contains(validator, "| "+perspective+" |") {
+			t.Errorf("validator.md has no scoring row for the %q lens", perspective)
+		}
+		if !strings.Contains(quick, "`"+perspective+"`") {
+			t.Errorf("quick-reviewer.md does not list the %q source name", perspective)
 		}
 	}
 }
 
-func TestSynthesizerCarriesSources(t *testing.T) {
-	synth := skillFile(t, "references/pipeline/synthesizer.md")
-	if !strings.Contains(synth, "Sources:") {
-		t.Error("synthesizer.md must require a Sources line on every finding")
-	}
-	entries, err := fs.ReadDir(FS, Name+"/references/perspectives")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		perspective := strings.TrimSuffix(e.Name(), ".md")
-		if !strings.Contains(synth, "`"+perspective+"`") {
-			t.Errorf("synthesizer.md does not list the %q source name", perspective)
+func TestTableMapsEveryPerspectiveToAnIcon(t *testing.T) {
+	table := skillFile(t, "scripts/render-table.sh")
+	for _, perspective := range perspectiveNames(t) {
+		if !strings.Contains(table, perspective+`: "`) {
+			t.Errorf("render-table.sh has no icon for the %q perspective", perspective)
 		}
 	}
-	quick := skillFile(t, "references/pipeline/quick-reviewer.md")
-	for _, e := range entries {
-		perspective := strings.TrimSuffix(e.Name(), ".md")
-		if !strings.Contains(quick, perspective) {
-			t.Errorf("quick-reviewer.md Category list is missing %q", perspective)
+}
+
+func TestTableColumns(t *testing.T) {
+	table := skillFile(t, "scripts/render-table.sh")
+	if !strings.Contains(table, `["#", "File", "Sev", "Urgency", "Review", "Fix"]`) {
+		t.Error("render-table.sh must draw the six columns")
+	}
+}
+
+func TestUrgencyLevelsAreConsistent(t *testing.T) {
+	levels := []string{"insist", "ask", "author", "optional"}
+	for _, f := range []string{"references/pipeline/triage.md", "scripts/render-table.sh", "scripts/build-report.sh"} {
+		doc := skillFile(t, f)
+		for _, level := range levels {
+			if !strings.Contains(doc, level) {
+				t.Errorf("%s does not mention the urgency level %q", f, level)
+			}
 		}
 	}
 }

@@ -9,7 +9,7 @@ metadata:
 
 # peer-pressure
 
-You orchestrate a review pipeline. Reviewers work alone, then validators try to disprove each finding, then one synthesis keeps only what survived. Follow the steps in order. Do not skip steps.
+You orchestrate a review pipeline. Reviewers work alone, one merge step lists the distinct issues, validators try to disprove each issue and score the ones that hold, and a triage step decides how urgent each one is. Follow the steps in order. Do not skip steps.
 
 `SKILL_DIR` is the directory that contains this file. All `references/` and `scripts/` paths below are relative to it.
 
@@ -18,6 +18,7 @@ You orchestrate a review pipeline. Reviewers work alone, then validators try to 
 Read the user's request for a target and flags.
 
 - `--full`: force the full pipeline. `--quick`: force the quick review. If both are given, say they conflict and stop. A flag always beats automatic routing, also in files mode.
+- `--width N`: the width of the issues table in characters. Default 140. A script cannot detect the terminal width, so use this when the table wraps or leaves empty space. Keep the value as `WIDTH`.
 - A number is a PR (`MODE=pr`).
 - One or more file paths are `MODE=files`.
 - Nothing is `MODE=branch`: review the current branch against its base.
@@ -70,7 +71,7 @@ If the README or manifests make the project's maturity or deployment obvious (in
 Version 0.x, internal tool. Treat API instability and network threat-model findings as suggestions.
 ```
 
-Otherwise leave `CONTEXT` empty. Only reviewers get `CONTEXT`. Validators do not, so they check claims without that bias.
+Otherwise leave `CONTEXT` empty. Reviewers and validators get `CONTEXT`. Validators use it only to scale their scores, never to decide whether a claim is true.
 
 ## Step 4: Choose quick or full
 
@@ -85,10 +86,10 @@ Otherwise leave `CONTEXT` empty. Only reviewers get `CONTEXT`. Validators do not
 Read <SKILL_DIR>/references/pipeline/quick-reviewer.md and follow it exactly.
 <CONTEXT><PRIOR_PREAMBLE>
 You are reviewing <INPUT_DESCRIPTION>. Read the content at <SESSION_DIR>/input.txt.
-Write your review to <SESSION_DIR>/synthesis.md.
+Write your review to <SESSION_DIR>/merged.json.
 ```
 
-Then go to Step 8.
+Then go to Step 8 with `QUICK=--quick`.
 
 ## Step 5: Reviewers (full pipeline)
 
@@ -117,53 +118,71 @@ Write your review to <SESSION_DIR>/<output>.
 
 If a reviewer fails, note it and continue. If every reviewer fails, tell the user and stop.
 
-## Step 6: Cross-validation
+## Step 6: Merge
+
+One agent lists the distinct issues from all review files, using `references/pipeline/merger.md`:
+
+```
+Read <SKILL_DIR>/references/pipeline/merger.md and follow it exactly.
+Read the review files <SESSION_DIR>/review-*.md and write the merged findings to <SESSION_DIR>/merged.json.
+```
+
+Check the result with `jq -e 'type == "array"' "$SESSION_DIR/merged.json"`. If it is missing or invalid, run the merger once more and give it the error. If it fails again, say "Merge failed." and stop.
+
+If `merged.json` is `[]`, there are no issues. Skip Step 7, run `score-findings.sh --quick` in Step 8 to write an empty result, skip the triage, and continue with Step 9.
+
+## Step 7: Validation
 
 Run one validator per perspective, using `references/pipeline/validator.md`. Prompt for the perspective `<p>`:
 
 ```
 Read <SKILL_DIR>/references/pipeline/validator.md and follow it exactly.
-Your perspective: <p>. Read all review files that exist in <SESSION_DIR>/ (review-*.md) and the original input at <SESSION_DIR>/input.txt.
-Write your validated review to <SESSION_DIR>/validated-<p>.md.
+<CONTEXT>Your perspective: <p>. Read the findings in <SESSION_DIR>/merged.json and the original input at <SESSION_DIR>/input.txt.
+Write your votes to <SESSION_DIR>/votes-<p>.jsonl.
 ```
 
-Start them in one batch when you can, otherwise run them in turn. Validators must try to disprove each claim against the real code, not agree with it. If a validator fails, the synthesis skips that file.
+Start them in one batch when you can, otherwise run them in turn. Validators must try to disprove each claim against the real code, not agree with it. If a validator fails, its votes are skipped.
 
-## Step 7: Synthesis
+## Step 8: Score, triage and report
 
-Use `references/pipeline/synthesizer.md`:
+1. Score. Run `"$SKILL_DIR/scripts/score-findings.sh" "$SESSION_DIR" $QUICK`. `QUICK` is `--quick` for a quick review or an empty merge, and empty otherwise. It keeps the findings that most validators confirmed, adds the lens scores, derives the labels, writes `scored.json` and prints a stats line. Keep the line. If it exits with 3, say that no validator produced readable votes, and stop.
+2. Triage. If `scored.json` has findings, run one agent with `references/pipeline/triage.md`:
 
-```
-Read <SKILL_DIR>/references/pipeline/synthesizer.md and follow it exactly.
-<PRIOR_PREAMBLE>
-Read the validated reviews <SESSION_DIR>/validated-*.md and write the synthesis to <SESSION_DIR>/synthesis.md.
-```
+   ```
+   Read <SKILL_DIR>/references/pipeline/triage.md and follow it exactly.
+   Read the findings <SESSION_DIR>/scored.json and the input <SESSION_DIR>/input.txt. In PR mode, also read <SESSION_DIR>/pr-meta.json.
+   Write the decisions to <SESSION_DIR>/triage.json.
+   ```
 
-Keep the stats line it returns. If `synthesis.md` is missing or empty, say "Synthesis failed." and stop.
+   If it fails, warn the user and continue. The urgency column stays empty and a critical finding blocks the merge.
+3. Report. Run `"$SKILL_DIR/scripts/build-report.sh" "$SESSION_DIR"`. It writes `report.json` and `synthesis.md` and prints a stats line. Keep it.
 
-## Step 8: Summary
+## Step 9: Summary
 
-Use `references/pipeline/summary.md`.
+The summary agent writes the prose. A script draws the issues table.
 
-PR mode:
+1. Prose. Use `references/pipeline/summary.md`.
 
-```
-Read <SKILL_DIR>/references/pipeline/summary.md and follow it exactly.
-The input is a PR. Read <SESSION_DIR>/synthesis.md, the diff <SESSION_DIR>/input.txt, <SESSION_DIR>/pr-meta.json and <SESSION_DIR>/prior-review.md.
-OWNER_REPO=<OWNER_REPO>, PR_NUMBER=<PR_NUMBER>, HEAD_SHA=<HEAD_SHA>. Write the summary to <SESSION_DIR>/summary.md.
-```
+   PR mode:
 
-Branch and files mode: the same, but say "The input is <INPUT_DESCRIPTION>", leave out the PR fields, and read only `synthesis.md` and `input.txt`.
+   ```
+   Read <SKILL_DIR>/references/pipeline/summary.md and follow it exactly.
+   The input is a PR. Read <SESSION_DIR>/report.json, the diff <SESSION_DIR>/input.txt, <SESSION_DIR>/pr-meta.json and <SESSION_DIR>/prior-review.md.
+   Write the summary to <SESSION_DIR>/summary.md.
+   ```
 
-Some hosts do not let subagents write report files. If `summary.md` is missing but the agent returned the summary as text, use that text. Do not retry the write or write the file around the block. If there is no summary at all, warn the user and show the synthesis stats instead.
+   Branch and files mode: the same, but say "The input is <INPUT_DESCRIPTION>", and read only `report.json` and `input.txt`.
 
-## Step 9: Present
+   Some hosts do not let subagents write report files. If `summary.md` is missing but the agent returned the summary as text, use that text. Do not retry the write or write the file around the block. If there is no summary at all, warn the user and show the stats lines instead. The agent may also write `prior.json` in the session directory. That file is optional.
+2. Issues. Run `"$SKILL_DIR/scripts/render-table.sh" "$SESSION_DIR" --width "${WIDTH:-140}" | tee "$SESSION_DIR/issues.md"`. It prints the counts line, the table in a text fence, the legend, and a short list for findings that must be fixed before merge.
+
+## Step 10: Present
 
 Always show the review before doing anything else.
 
-- Print the summary exactly as returned, without its path line.
+- Print the summary prose exactly as returned, without its path line. Then print `## Issues` and the output of `render-table.sh` unchanged. Do not retype or reflow the table.
 - Say where the session files are, which pipeline ran (quick, or full with the mode), and which reviewers failed.
-- Show the synthesis stats. If the table in the summary has a different count, say the table is the one to trust and mention the difference.
+- Show the stats lines from Step 8, and how many findings the validators dropped. If the table has fewer rows than the stats, say how many findings the prior comments dismissed.
 - If there are no issues, say so and stop.
 
 Then ask:
@@ -173,7 +192,7 @@ Then ask:
 
 Do nothing more until the user answers.
 
-## Step 10: Apply fixes
+## Step 11: Apply fixes
 
 Only when asked.
 
@@ -184,7 +203,7 @@ Only when asked.
 5. Applier: `references/pipeline/applier.md`. Prompt: "Read the implementation plan at <PLAN_FILE>. Apply the fixes."
 6. Show the list of changed files.
 
-## Step 11: Post a pending review (PR mode)
+## Step 12: Post a pending review (PR mode)
 
 Only when asked.
 
@@ -197,8 +216,8 @@ If the user says no or wants changes, do not post. `threads.json` can be edited 
 
 ## Rules
 
-- Never apply fixes or post comments without the user's answer in Step 9.
+- Never apply fixes or post comments without the user's answer in Step 10.
 - Never submit a GitHub review. Posted reviews stay pending. Never call a submit endpoint yourself.
-- Keep your own context small. Use the paths, stats lines and summaries that steps return. Do not read review files yourself, except to run the dry-run in Step 11.
+- Keep your own context small. Use the paths, stats lines and summaries that steps return. Do not read review files yourself, except to run the dry-run in Step 12.
 - If a step fails, say which one and continue with what you have, unless the step says stop.
 - Do not put PII, PHI or secrets from the diff into review comments.

@@ -13,11 +13,11 @@ You will receive a path to an input file. This may be a diff, a spec, a plan, or
 
 Your prompt may include sections titled "Project Context" and "Prior findings". Rules:
 
-- **Project Context:** Use version, deployment model, and threat model to calibrate severity:
-  - Localhost-only tools: downgrade auth/network findings to **suggestion**.
-  - v0.x.0 projects: downgrade API stability, production hardening, and breaking API changes to **suggestion** (expected per semver).
-  - Internal-network tools: downgrade external attack vector findings to **suggestion**.
-  - Published libraries (v1+): flag unvalidated input, auth gaps, and breaking changes as **critical** or **warning**.
+- **Project Context:** Use version, deployment model, and threat model to calibrate the scores you give (see Output format):
+  - Localhost-only tools: give auth and network findings a score of 1 at most.
+  - v0.x.0 projects: give API stability, production hardening, and breaking API changes a score of 1 at most (expected per semver).
+  - Internal-network tools: give external attack vector findings a score of 1 at most.
+  - Published libraries (v1+): score unvalidated input, auth gaps, and breaking changes 2 or 3.
 - **Prior findings:** Do NOT re-report.
 
 ## Review checklist
@@ -94,49 +94,37 @@ Use `git blame` and `git log` on changed files to understand intent when unclear
 
 ## Output format
 
-Write your review to the output path provided. Use this synthesis structure:
+Write a JSON array to the output path provided, and nothing else in the file. One object per distinct issue:
 
 ```
-# Code Review Synthesis — [date]
-
-## Overall Assessment
-[2-3 sentences: is this safe to merge, what is the biggest concern, overall quality]
-
-## Critical Issues (must fix before merge)
-
-### [Short Issue Title]
-**File:** path/to/file:line
-**Severity:** critical
-**Category:** correctness | security | architecture | docs | maintainability | compatibility | performance
-**What is wrong:** [1-2 sentences]
-**Impact:** [1 sentence]
-**Recommended change:** [1-2 sentences]
-
-## Warnings (should fix)
-[Same per-finding format as Critical Issues, with **Severity:** warning]
-
-## Suggestions (nice to have)
-[Findings grouped by theme, same format, with **Severity:** suggestion]
-
-## Documentation Drift
-The following doc/comment updates were identified (suggestion-level):
-- [ ] [description of fix] in `path/to/file:line`
-[Omit this section if there are no documentation findings]
-
-## What Looks Good
-[Areas where you found nothing wrong — helps the author know what is solid]
+{
+  "id": "F1",
+  "title": "Short issue title, at most 70 characters",
+  "file": "path/to/file.go",
+  "line": 42,
+  "sources": ["correctness"],
+  "problem": "One or two sentences on what is wrong.",
+  "impact": "One sentence on what happens because of it.",
+  "fix": "One or two sentences on what to change.",
+  "scores": {"correctness": 2, "maintainability": 1}
+}
 ```
 
-Severity guide:
+- `id`: `F1`, `F2`, and so on.
+- `file`: the repository path as it appears in the input, with no `:line` suffix and no `a/` or `b/` prefix.
+- `line`: the first affected line as a number, or `null`.
+- `sources`: the lenses that found the issue, in lowercase: `correctness`, `security`, `architecture`, `docs`, `compatibility`, `performance`, `maintainability`.
+- `scores`: for every lens that cares about the issue, a number from 0 to 3. Leave out lenses that do not care. Judge each lens on its own.
+  - 1: minor. 2: significant. 3: severe.
+  - Correctness 3 means data loss, a crash, or a wrong result on the common path. Security 3 means exploitable by an outsider. Docs 3 means a false claim that causes API misuse. Compatibility 3 means a broken public contract or persisted data.
+  - A real but small issue scores 1. Do not inflate.
+- `problem`, `impact`, `fix`: plain sentences. Put identifiers in backticks. No line breaks.
+- Escape quotes so the file is valid JSON. If you find no issues, write `[]`.
 
-- **critical:** Bugs that will cause incorrect behavior, security vulnerabilities exploitable by an adversary, or public API breakage in v1+ libraries
-- **warning:** Issues that should be fixed but won't cause immediate failures (subtle edge cases, maintenance risks, non-critical doc drift)
-- **suggestion:** Nice-to-have improvements (style, naming, minor simplifications)
-
-If you find no issues at all, write the synthesis with "No issues found." under Overall Assessment and empty severity sections.
+Do not write severity labels. A later step derives them from the scores.
 
 Be concise. No preamble or filler. Each finding should be actionable.
 
 ## Response contract
 
-After writing your review file, your ONLY response must be the absolute path to your output file and a single stats line (e.g., "2 critical, 1 warning, 3 suggestions"). Do not summarize findings. Do not include any other text.
+After writing the file, respond with only the absolute path to it and one line with the number of issues, for example: `4 issues`. Do not summarize findings. Do not include any other text.
