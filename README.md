@@ -54,6 +54,7 @@ In an agent with slash commands:
 /peer-pressure src/a.go b.md   review specific files
 /peer-pressure --full 123      force the full pipeline
 /peer-pressure --quick 123     force the quick single-pass review
+/peer-pressure --width 120 123  table width in characters (default 140)
 ```
 
 Elsewhere, ask in plain words: "Use the peer-pressure skill to review PR 123."
@@ -73,7 +74,7 @@ input -> route -> 7 reviewers -> merge -> 7 validators -> score -> triage -> sum
 3. **Merge.** One agent lists the distinct issues from all reviews and gives each an ID. Reviewer severities are dropped on purpose, so validators are not anchored by them.
 4. **Validate.** Each validator checks every issue against the real code and tries to disprove it. It also gives each surviving issue a 0 to 3 score from its own lens. A script keeps an issue when more validators kept it than dropped it, sums the lens scores, and sets the label from the highest single score: 3 is critical, 2 is warning, anything lower is suggestion. A sum alone would let a style nit that every lens mentions outrank a data-loss bug that only one lens sees.
 5. **Triage.** One agent decides how hard to push each issue: `Insist`, `Ask`, `Up to author` or `Optional`. Severity says how bad the problem is. Urgency also weighs the size of the fix, how far the problem reaches, and whether the code is new in this change.
-6. **Summarize.** What the change does, how well, and an issue table with file, severity and score, urgency, review and fix. In PR mode the File column links to the exact line.
+6. **Summarize.** An agent writes what the change does and how well. A script then draws the issue table (file, severity and score, urgency, review, fix) at a fixed width, so it stays aligned however many rows there are. The default width is 140 characters. A script cannot read your terminal size, so pass `--width N` to match it.
 7. **You decide.** Apply fixes locally, post a pending review, both, or nothing.
 
 If your agent can start subagents (Claude Code can), reviewers and validators run in parallel with separate contexts. Otherwise they run one after another in one context. That works but is slower, and the reviewers can influence each other, so quality drops a little.
@@ -95,7 +96,7 @@ skills/peer-pressure/
   SKILL.md                    the orchestrator
   references/perspectives/    one prompt per reviewer
   references/pipeline/        merger, validator, triage, summary, planner, applier, formatter
-  scripts/                    route-diff.sh, score-findings.sh, build-report.sh, pr-context.sh, post-pending-review.sh
+  scripts/                    route-diff.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, post-pending-review.sh
 cmd/install/                  the installer
 internal/install/             copy and replace logic
 test/                         offline script tests with a stubbed gh

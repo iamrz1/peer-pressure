@@ -85,6 +85,34 @@ jq '[.[] | select(.id != "F2")]' "$session/merged.json" >"$session/m.json" && mv
 "$scripts/build-report.sh" "$session" >/dev/null
 check "without triage and criticals the change is ready" true "$(jq '.ready' "$session/report.json")"
 
+table_width() {
+  python3 -I -c '
+import sys, unicodedata
+def dw(s):
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else (0 if unicodedata.combining(c) or c in "\u200b\ufe0f" else 1) for c in s)
+print(sorted({dw(l.rstrip("\n")) for l in sys.stdin if l[:1] in "┌│├└"}))'
+}
+cp "$root/test/fixtures/session/triage.json" "$session/triage.json"
+"$scripts/build-report.sh" "$session" >/dev/null
+for w in 100 140; do
+  check "table is exactly $w wide" "[$w]" "$("$scripts/render-table.sh" "$session" --width "$w" | table_width)"
+done
+rendered=$("$scripts/render-table.sh" "$session" --width 120)
+check "counts line is first" '**🟡 1 warning** · **🔵 1 suggestion** · ✅ *ready to merge*' "$(head -1 <<<"$rendered")"
+check "a divider under the header and between the two rows" 2 "$(grep -c '^├' <<<"$rendered")"
+check "score is in brackets" 1 "$(grep -c '🟡 (3)' <<<"$rendered")"
+check "urgency label is readable" 1 "$(grep -c 'Up to' <<<"$rendered")"
+echo '[{"id":"F1","login":"alice","resolved":true,"dismiss":false},{"id":"F4","login":"bob","dismiss":true}]' >"$session/prior.json"
+rendered=$("$scripts/render-table.sh" "$session" --width 220)
+check "prior comment marks the row" 1 "$(grep -c '(@alice, resolved)' <<<"$rendered")"
+check "dismissed finding is left out" 0 "$(grep -c 'Rename helper\|Vague name' <<<"$rendered")"
+rm "$session/prior.json"
+if "$scripts/render-table.sh" "$session" --width abc 2>/dev/null; then
+  check "non-numeric width is rejected" fail ok
+else
+  check "non-numeric width is rejected" 2 "$?"
+fi
+
 quick="$tmp/quick"
 mkdir -p "$quick"
 cp "$root/test/fixtures/session/input.txt" "$quick/"
@@ -104,6 +132,7 @@ fi
 check "an empty merge scores to zero findings" "0 critical, 0 warnings, 0 suggestions, 0 dropped" "$("$scripts/score-findings.sh" "$empty" --quick)"
 "$scripts/build-report.sh" "$empty" >/dev/null
 check "an empty report is ready to merge" true "$(jq '.ready' "$empty/report.json")"
+check "an empty report renders no table" "No issues found." "$("$scripts/render-table.sh" "$empty")"
 echo '{"not":"an array"}' >"$empty/merged.json"
 if "$scripts/score-findings.sh" "$empty" --quick 2>/dev/null; then
   check "invalid merged.json is rejected" fail ok

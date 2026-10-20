@@ -18,6 +18,7 @@ You orchestrate a review pipeline. Reviewers work alone, one merge step lists th
 Read the user's request for a target and flags.
 
 - `--full`: force the full pipeline. `--quick`: force the quick review. If both are given, say they conflict and stop. A flag always beats automatic routing, also in files mode.
+- `--width N`: the width of the issues table in characters. Default 140. A script cannot detect the terminal width, so use this when the table wraps or leaves empty space. Keep the value as `WIDTH`.
 - A number is a PR (`MODE=pr`).
 - One or more file paths are `MODE=files`.
 - Nothing is `MODE=branch`: review the current branch against its base.
@@ -158,27 +159,30 @@ Start them in one batch when you can, otherwise run them in turn. Validators mus
 
 ## Step 9: Summary
 
-Use `references/pipeline/summary.md`.
+The summary agent writes the prose. A script draws the issues table.
 
-PR mode:
+1. Prose. Use `references/pipeline/summary.md`.
 
-```
-Read <SKILL_DIR>/references/pipeline/summary.md and follow it exactly.
-The input is a PR. Read <SESSION_DIR>/report.json, the diff <SESSION_DIR>/input.txt, <SESSION_DIR>/pr-meta.json and <SESSION_DIR>/prior-review.md.
-OWNER_REPO=<OWNER_REPO>, PR_NUMBER=<PR_NUMBER>, HEAD_SHA=<HEAD_SHA>. Write the summary to <SESSION_DIR>/summary.md.
-```
+   PR mode:
 
-Branch and files mode: the same, but say "The input is <INPUT_DESCRIPTION>", leave out the PR fields, and read only `report.json` and `input.txt`.
+   ```
+   Read <SKILL_DIR>/references/pipeline/summary.md and follow it exactly.
+   The input is a PR. Read <SESSION_DIR>/report.json, the diff <SESSION_DIR>/input.txt, <SESSION_DIR>/pr-meta.json and <SESSION_DIR>/prior-review.md.
+   Write the summary to <SESSION_DIR>/summary.md.
+   ```
 
-Some hosts do not let subagents write report files. If `summary.md` is missing but the agent returned the summary as text, use that text. Do not retry the write or write the file around the block. If there is no summary at all, warn the user and show the stats lines instead.
+   Branch and files mode: the same, but say "The input is <INPUT_DESCRIPTION>", and read only `report.json` and `input.txt`.
+
+   Some hosts do not let subagents write report files. If `summary.md` is missing but the agent returned the summary as text, use that text. Do not retry the write or write the file around the block. If there is no summary at all, warn the user and show the stats lines instead. The agent may also write `prior.json` in the session directory. That file is optional.
+2. Issues. Run `"$SKILL_DIR/scripts/render-table.sh" "$SESSION_DIR" --width "${WIDTH:-140}" | tee "$SESSION_DIR/issues.md"`. It prints the counts line, the table in a text fence, the legend, and a short list for findings that must be fixed before merge.
 
 ## Step 10: Present
 
 Always show the review before doing anything else.
 
-- Print the summary exactly as returned, without its path line.
+- Print the summary prose exactly as returned, without its path line. Then print `## Issues` and the output of `render-table.sh` unchanged. Do not retype or reflow the table.
 - Say where the session files are, which pipeline ran (quick, or full with the mode), and which reviewers failed.
-- Show the stats lines from Step 8, and how many findings the validators dropped. If the table in the summary has a different row count, say the table is the one to trust and mention the difference.
+- Show the stats lines from Step 8, and how many findings the validators dropped. If the table has fewer rows than the stats, say how many findings the prior comments dismissed.
 - If there are no issues, say so and stop.
 
 Then ask:

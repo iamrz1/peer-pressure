@@ -121,20 +121,6 @@ func TestNoStaleOrPrivateContent(t *testing.T) {
 	}
 }
 
-func TestSummaryMapsEveryPerspectiveToAnIcon(t *testing.T) {
-	summary := skillFile(t, "references/pipeline/summary.md")
-	entries, err := fs.ReadDir(FS, Name+"/references/perspectives")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		perspective := strings.TrimSuffix(e.Name(), ".md")
-		if !strings.Contains(summary, "| "+perspective+" |") {
-			t.Errorf("summary.md has no icon row for the %q perspective", perspective)
-		}
-	}
-}
-
 func perspectiveNames(t *testing.T) []string {
 	t.Helper()
 	entries, err := fs.ReadDir(FS, Name+"/references/perspectives")
@@ -165,16 +151,25 @@ func TestPromptsNameEveryPerspective(t *testing.T) {
 	}
 }
 
-func TestSummaryTableColumns(t *testing.T) {
-	summary := skillFile(t, "references/pipeline/summary.md")
-	if !strings.Contains(summary, "| # | File | Sev | Urgency | Review | Fix |") {
-		t.Error("summary.md must define the six-column table")
+func TestTableMapsEveryPerspectiveToAnIcon(t *testing.T) {
+	table := skillFile(t, "scripts/render-table.sh")
+	for _, perspective := range perspectiveNames(t) {
+		if !strings.Contains(table, perspective+`: "`) {
+			t.Errorf("render-table.sh has no icon for the %q perspective", perspective)
+		}
+	}
+}
+
+func TestTableColumns(t *testing.T) {
+	table := skillFile(t, "scripts/render-table.sh")
+	if !strings.Contains(table, `["#", "File", "Sev", "Urgency", "Review", "Fix"]`) {
+		t.Error("render-table.sh must draw the six columns")
 	}
 }
 
 func TestUrgencyLevelsAreConsistent(t *testing.T) {
 	levels := []string{"insist", "ask", "author", "optional"}
-	for _, f := range []string{"references/pipeline/triage.md", "references/pipeline/summary.md", "scripts/build-report.sh"} {
+	for _, f := range []string{"references/pipeline/triage.md", "scripts/render-table.sh", "scripts/build-report.sh"} {
 		doc := skillFile(t, f)
 		for _, level := range levels {
 			if !strings.Contains(doc, level) {
