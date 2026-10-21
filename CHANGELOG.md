@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/iamrz1/peer-pressure/compare/v0.4.0...v0.5.0) (2026-10-21)
+
+
+### Features
+
+* drop nits early and review stacked PRs ([95d45f1](https://github.com/iamrz1/peer-pressure/commit/95d45f17060e488496588e0b335a5f1fbbb0ff3d))
+* drop nits early and review stacked PRs ([c57e586](https://github.com/iamrz1/peer-pressure/commit/c57e586afb76d9c23f39a52989ec148b3a698255))
+* drop nits early in reviewer instructions ([9fd228e](https://github.com/iamrz1/peer-pressure/commit/9fd228e813bfa2414daa389708b797e208ef5de4))
+* review a whole stack of PRs and post findings to the owning PR ([dea597c](https://github.com/iamrz1/peer-pressure/commit/dea597c65db0082cd8287a66de57075f82657aa0))
+* review stacked branches and PRs against their parent ([e75c20c](https://github.com/iamrz1/peer-pressure/commit/e75c20c24f3b172c4c55efc9d111a655260d4e11))
+
 ## [0.4.0](https://github.com/iamrz1/peer-pressure/compare/v0.3.0...v0.4.0) (2026-10-20)
 
 
