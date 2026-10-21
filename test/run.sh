@@ -52,6 +52,38 @@ else
   check "non-numeric PR number is rejected" ok accepted
 fi
 
+"$scripts/pr-context.sh" 1 "$tmp/plain" >"$tmp/plain.out"
+check "a PR on the default branch is not stacked" "STACKED=false" "$(grep ^STACKED "$tmp/plain.out")"
+GH_STUB_BASE=feat/a GH_STUB_PARENT=7 "$scripts/pr-context.sh" 1 "$tmp/stack" >"$tmp/stack.out"
+check "a PR on another branch is stacked" "STACKED=true" "$(grep ^STACKED "$tmp/stack.out")"
+check "the parent PR is reported" "PARENT_PR=7" "$(grep ^PARENT_PR "$tmp/stack.out")"
+check "the base branch is reported" "BASE_REF=feat/a" "$(grep ^BASE_REF "$tmp/stack.out")"
+
+repo="$tmp/repo"
+git init -q -b main "$repo"
+g() { git -C "$repo" -c user.name=t -c user.email=t@example.com "$@"; }
+commit() { echo "$1" >>"$repo/f.txt"; g add f.txt; g commit -q -m "$1"; }
+commit one
+g checkout -q -b feat/a
+commit two
+commit three
+sha_a=$(g rev-parse HEAD)
+g checkout -q -b feat/b
+commit four
+found() { local key="$1"; shift; (cd "$repo" && GH_STUB_NOPR=1 "$scripts/find-base.sh" "$@" | sed -n "s/^$key=//p"); }
+check "a branch on another branch uses it as the base" feat/a "$(found BASE)"
+check "that is a stacked change" true "$(found STACKED)"
+check "the diff starts at the parent tip" "$sha_a" "$(found MERGE_BASE)"
+check "--base overrides the guess" "main false" "$(found BASE --base main) $(found STACKED --base main)"
+check "an open PR decides the base" "feat/a 7" "$(cd "$repo" && GH_STUB_BASE=feat/a GH_STUB_PARENT=7 "$scripts/find-base.sh" | sed -n 's/^BASE=//p;s/^PARENT_PR=//p' | paste -sd' ' -)"
+g checkout -q feat/a
+check "a branch on the default branch is not stacked" "main false" "$(found BASE) $(found STACKED)"
+if (cd "$repo" && "$scripts/find-base.sh" --base nope 2>/dev/null); then
+  check "an unknown --base is rejected" fail ok
+else
+  check "an unknown --base is rejected" 2 "$?"
+fi
+
 session="$tmp/scoring"
 mkdir -p "$session"
 cp "$root"/test/fixtures/session/* "$session"/

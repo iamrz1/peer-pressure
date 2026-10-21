@@ -2,10 +2,14 @@
 # Minimal gh stub for tests. Records API calls in $GH_STUB_LOG.
 set -euo pipefail
 case "$1 $2" in
-  "repo view") echo "octo/demo" ;;
+  "repo view")
+    if [[ "$*" == *defaultBranchRef* ]]; then echo "${GH_STUB_DEFAULT:-main}"; else echo "octo/demo"; fi ;;
   "pr view")
-    if [[ "$*" == *headRefOid* && "$*" == *--jq* ]]; then echo "abc123"; else
-      echo '{"title":"t","body":"b","url":"u","headRefOid":"abc123","headRefName":"h","baseRefName":"main"}'; fi ;;
+    if [ -n "${GH_STUB_NOPR:-}" ]; then echo "no pull requests found" >&2; exit 1; fi
+    if [[ "$*" == *baseRefName* && "$*" == *--jq* ]]; then echo "${GH_STUB_BASE:-main}"
+    elif [[ "$*" == *headRefOid* && "$*" == *--jq* ]]; then echo "abc123"; else
+      echo '{"title":"t","body":"b","url":"u","headRefOid":"abc123","headRefName":"h","baseRefName":"'"${GH_STUB_BASE:-main}"'"}'; fi ;;
+  "pr list") echo "${GH_STUB_PARENT:-}" ;;
   "pr diff") cat "$GH_STUB_DIFF" ;;
   "api graphql") cat "$GH_STUB_THREADS" ;;
   "api --method") echo "$*" >>"${GH_STUB_LOG:-/dev/null}"; cat >>"${GH_STUB_LOG:-/dev/null}"; echo '{"html_url":"https://github.com/octo/demo/pull/1#pullrequestreview-1"}' ;;

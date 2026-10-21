@@ -55,6 +55,7 @@ In an agent with slash commands:
 /peer-pressure --full 123      force the full pipeline
 /peer-pressure --quick 123     force the quick single-pass review
 /peer-pressure --width 120 123  table width in characters (default 140)
+/peer-pressure --base feat/a    review against this ref (branch mode, for a stacked branch)
 ```
 
 Elsewhere, ask in plain words: "Use the peer-pressure skill to review PR 123."
@@ -96,7 +97,7 @@ skills/peer-pressure/
   SKILL.md                    the orchestrator
   references/perspectives/    one prompt per reviewer
   references/pipeline/        merger, validator, triage, summary, planner, applier, formatter
-  scripts/                    route-diff.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, post-pending-review.sh
+  scripts/                    route-diff.sh, find-base.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, post-pending-review.sh
 cmd/install/                  the installer
 internal/install/             copy and replace logic
 test/                         offline script tests with a stubbed gh

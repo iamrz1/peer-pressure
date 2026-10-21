@@ -178,3 +178,31 @@ func TestUrgencyLevelsAreConsistent(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewersDropNitsEarly(t *testing.T) {
+	files := []string{"references/pipeline/quick-reviewer.md"}
+	for _, perspective := range perspectiveNames(t) {
+		files = append(files, "references/perspectives/"+perspective+".md")
+	}
+	for _, f := range files {
+		doc := skillFile(t, f)
+		if !strings.Contains(doc, "## Drop nits early") {
+			t.Errorf("%s has no \"Drop nits early\" section", f)
+		}
+		if strings.Contains(doc, "critical | warning | suggestion") {
+			t.Errorf("%s still offers reviewers a suggestion level", f)
+		}
+	}
+}
+
+func TestStackedChangesAreHandled(t *testing.T) {
+	doc := skillFile(t, "SKILL.md")
+	for _, want := range []string{"find-base.sh", "STACK_PREAMBLE", "--base", "STACKED"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("SKILL.md does not mention %q", want)
+		}
+	}
+	if n := strings.Count(doc, "<CONTEXT><STACK_PREAMBLE><PRIOR_PREAMBLE>"); n != 2 {
+		t.Errorf("reviewer prompts carry the stack preamble %d times, want 2", n)
+	}
+}
