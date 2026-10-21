@@ -12,10 +12,12 @@ case "$1 $2" in
       echo '{"title":"t","body":"b","url":"u","headRefOid":"abc123","headRefName":"h","baseRefName":"'"${GH_STUB_BASE:-main}"'"}'; fi ;;
   "pr list")
     if [ -n "${GH_STUB_STACK:-}" ]; then
-      case "$*" in
-        *"--head "*) jq -c --arg b "$(sed 's/.*--head \([^ ]*\).*/\1/' <<<"$*")" '[.[] | select(.headRefName == $b)]' "$GH_STUB_STACK" ;;
-        *"--base "*) jq -c --arg b "$(sed 's/.*--base \([^ ]*\).*/\1/' <<<"$*")" '[.[] | select(.baseRefName == $b)]' "$GH_STUB_STACK" ;;
-      esac
+      key="" val=""
+      for a in "$@"; do
+        [ -n "$key" ] && [ -z "$val" ] && val="$a"
+        case "$a" in --head) key=headRefName ;; --base) key=baseRefName ;; esac
+      done
+      jq -c --arg k "$key" --arg v "$val" '[.[] | select(.[$k] == $v)]' "$GH_STUB_STACK"
     else echo "${GH_STUB_PARENT:-}"; fi ;;
   "pr diff") cat "$GH_STUB_DIFF" ;;
   "api repos/"*) cat "$GH_STUB_DIFF" ;;
