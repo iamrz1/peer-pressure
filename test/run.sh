@@ -52,6 +52,104 @@ else
   check "non-numeric PR number is rejected" ok accepted
 fi
 
+"$scripts/pr-context.sh" 1 "$tmp/plain" >"$tmp/plain.out"
+check "a PR on the default branch is not stacked" "STACKED=false" "$(grep ^STACKED "$tmp/plain.out")"
+GH_STUB_BASE=feat/a GH_STUB_PARENT=7 "$scripts/pr-context.sh" 1 "$tmp/stack" >"$tmp/stack.out"
+check "a PR on another branch is stacked" "STACKED=true" "$(grep ^STACKED "$tmp/stack.out")"
+check "the parent PR is reported" "PARENT_PR=7" "$(grep ^PARENT_PR "$tmp/stack.out")"
+check "the base branch is reported" "BASE_REF=feat/a" "$(grep ^BASE_REF "$tmp/stack.out")"
+
+repo="$tmp/repo"
+git init -q -b main "$repo"
+g() { git -C "$repo" -c user.name=t -c user.email=t@example.com "$@"; }
+commit() { echo "$1" >>"$repo/f.txt"; g add f.txt; g commit -q -m "$1"; }
+commit one
+g checkout -q -b feat/a
+commit two
+commit three
+sha_a=$(g rev-parse HEAD)
+g checkout -q -b feat/b
+commit four
+found() { local key="$1"; shift; (cd "$repo" && GH_STUB_NOPR=1 "$scripts/find-base.sh" "$@" | sed -n "s/^$key=//p"); }
+check "a branch on another branch uses it as the base" feat/a "$(found BASE)"
+check "that is a stacked change" true "$(found STACKED)"
+check "the diff starts at the parent tip" "$sha_a" "$(found MERGE_BASE)"
+check "--base overrides the guess" "main false" "$(found BASE --base main) $(found STACKED --base main)"
+check "an open PR decides the base" "feat/a 7" "$(cd "$repo" && GH_STUB_BASE=feat/a GH_STUB_PARENT=7 "$scripts/find-base.sh" | sed -n 's/^BASE=//p;s/^PARENT_PR=//p' | paste -sd' ' -)"
+g checkout -q feat/a
+check "a branch on the default branch is not stacked" "main false" "$(found BASE) $(found STACKED)"
+if (cd "$repo" && "$scripts/find-base.sh" --base nope 2>/dev/null); then
+  check "an unknown --base is rejected" fail ok
+else
+  check "an unknown --base is rejected" 2 "$?"
+fi
+
+export GH_STUB_STACK="$root/test/fixtures/stack.json"
+for start in 11 12 13; do
+  "$scripts/find-stack.sh" "$start" "$tmp/stack-$start" >"$tmp/stack-$start.out"
+  check "the stack is found from PR $start" "STACK_PRS=11 12 13" "$(grep ^STACK_PRS "$tmp/stack-$start.out")"
+done
+check "stack.json runs bottom to top" "first third" "$(jq -r '[first.title, last.title] | join(" ")' "$tmp/stack-12/stack.json")"
+"$scripts/stack-context.sh" "$tmp/stack-12" >"$tmp/stack-ctx.out"
+check "stack context reports the top PR" "TIP_PR=13" "$(grep ^TIP_PR "$tmp/stack-ctx.out")"
+check "stack context reports the bottom base" "BASE_REF=main" "$(grep ^BASE_REF "$tmp/stack-ctx.out")"
+check "every PR gets its own directory" "3" "$(find "$tmp/stack-12" -type d -name 'pr-*' | wc -l | tr -d ' ')"
+check "pr-meta.json lists every PR" 3 "$(jq length "$tmp/stack-12/pr-meta.json")"
+check "combined input is written" 1 "$(test -s "$tmp/stack-12/input.txt" && echo 1)"
+unset GH_STUB_STACK
+
+sd="$tmp/assign"
+mkdir -p "$sd/pr-11" "$sd/pr-12"
+echo '[{"number":11,"title":"bottom"},{"number":12,"title":"top"}]' >"$sd/stack.json"
+cat >"$sd/pr-11/input.txt" <<'DIFF'
+diff --git a/pkg/a.go b/pkg/a.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/a.go
+@@ -0,0 +1,5 @@
++l1
++l2
++l3
++l4
++l5
+DIFF
+cat >"$sd/pr-12/input.txt" <<'DIFF'
+diff --git a/pkg/a.go b/pkg/a.go
+--- a/pkg/a.go
++++ b/pkg/a.go
+@@ -1,5 +1,7 @@
+ l1
+ l2
++NEW1
++NEW2
+ l3
+ l4
+ l5
+DIFF
+finding() { printf '{"id":"%s","n":1,"title":"t","file":"%s","line":%s,"sources":["correctness"],"problem":"p","impact":"i","fix":"f","label":"warning","score":2}' "$1" "$2" "$3"; }
+echo "{\"lenses\":[\"correctness\"],\"dropped\":[],\"findings\":[$(finding F1 pkg/a.go 3),$(finding F2 pkg/a.go 6),$(finding F3 pkg/a.go 2),$(finding F4 pkg/b.go 9),$(finding F5 pkg/a.go null)]}" >"$sd/scored.json"
+"$scripts/assign-prs.sh" "$sd" >/dev/null
+check "a line added by the top PR goes to it" 12 "$(jq '.findings[0].pr' "$sd/scored.json")"
+check "a line shifted by the top PR goes to the lower one" 11 "$(jq '.findings[1].pr' "$sd/scored.json")"
+check "a line before the top PR's hunk goes to the lower one" 11 "$(jq '.findings[2].pr' "$sd/scored.json")"
+check "a line no PR touched has no owner" null "$(jq '.findings[3].pr' "$sd/scored.json")"
+check "a finding without a line goes to the top PR touching the file" 12 "$(jq '.findings[4].pr' "$sd/scored.json")"
+"$scripts/assign-prs.sh" "$sd" --split >"$tmp/split.out"
+check "PR 12 gets its two findings" 2 "$(jq '.findings | length' "$sd/pr-12/scored.json")"
+check "PR 11 gets its two findings" 2 "$(jq '.findings | length' "$sd/pr-11/scored.json")"
+check "each PR gets a synthesis" 2 "$(grep -c '^### ' "$sd/pr-12/synthesis.md")"
+
+table_width() {
+  python3 -I -c '
+import sys, unicodedata
+def dw(s):
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else (0 if unicodedata.combining(c) or c in "\u200b\ufe0f" else 1) for c in s)
+print(sorted({dw(l.rstrip("\n")) for l in sys.stdin if l[:1] in "┌│├└"}))'
+}
+"$scripts/build-report.sh" "$sd" >/dev/null
+check "a stack review marks the PR in the file cell" 1 "$("$scripts/render-table.sh" "$sd" --width 140 | grep -c '#12 pkg/a.go:3')"
+check "the table keeps its width with the PR marker" "[140]" "$("$scripts/render-table.sh" "$sd" --width 140 | table_width)"
+
 session="$tmp/scoring"
 mkdir -p "$session"
 cp "$root"/test/fixtures/session/* "$session"/
@@ -85,13 +183,6 @@ jq '[.[] | select(.id != "F2")]' "$session/merged.json" >"$session/m.json" && mv
 "$scripts/build-report.sh" "$session" >/dev/null
 check "without triage and criticals the change is ready" true "$(jq '.ready' "$session/report.json")"
 
-table_width() {
-  python3 -I -c '
-import sys, unicodedata
-def dw(s):
-    return sum(2 if unicodedata.east_asian_width(c) in "WF" else (0 if unicodedata.combining(c) or c in "\u200b\ufe0f" else 1) for c in s)
-print(sorted({dw(l.rstrip("\n")) for l in sys.stdin if l[:1] in "┌│├└"}))'
-}
 cp "$root/test/fixtures/session/triage.json" "$session/triage.json"
 "$scripts/build-report.sh" "$session" >/dev/null
 for w in 100 140; do

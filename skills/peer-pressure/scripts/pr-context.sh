@@ -4,8 +4,10 @@
 # Usage: pr-context.sh <pr-number> <session-dir>
 #
 # Writes input.txt (the diff), pr-meta.json, and prior-review.md (existing review
-# threads and comments). Prints OWNER_REPO, PR_NUMBER, HEAD_SHA and PRIOR_THREADS
-# as key=value lines. Needs gh and jq.
+# threads and comments). Prints OWNER_REPO, PR_NUMBER, HEAD_SHA, PRIOR_THREADS,
+# BASE_REF, STACKED and PARENT_PR as key=value lines. The diff is against the PR's
+# own base, so a stacked PR (base is not the default branch) shows only its own
+# changes. PARENT_PR is the open PR for that base branch, or empty. Needs gh and jq.
 set -euo pipefail
 
 if [ "$#" -ne 2 ]; then
@@ -74,4 +76,14 @@ total=$(jq '.data.repository.pullRequest.reviewThreads.totalCount' <<<"$threads"
   fi
 } >"$dir/prior-review.md"
 
-printf 'OWNER_REPO=%s\nPR_NUMBER=%s\nHEAD_SHA=%s\nPRIOR_THREADS=%s\n' "$owner_repo" "$pr" "$head_sha" "$total"
+base_ref=$(jq -r .baseRefName "$dir/pr-meta.json")
+default_ref=$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null || true)
+stacked=false
+parent_pr=""
+if [ -n "$default_ref" ] && [ "$base_ref" != "$default_ref" ]; then
+  stacked=true
+  parent_pr=$(gh pr list --head "$base_ref" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
+fi
+
+printf 'OWNER_REPO=%s\nPR_NUMBER=%s\nHEAD_SHA=%s\nPRIOR_THREADS=%s\nBASE_REF=%s\nSTACKED=%s\nPARENT_PR=%s\n' \
+  "$owner_repo" "$pr" "$head_sha" "$total" "$base_ref" "$stacked" "$parent_pr"

@@ -1,0 +1,5 @@
+[
+  {"number": 11, "title": "first", "headRefName": "feat/a", "baseRefName": "main"},
+  {"number": 12, "title": "second", "headRefName": "feat/b", "baseRefName": "feat/a"},
+  {"number": 13, "title": "third", "headRefName": "feat/c", "baseRefName": "feat/b"}
+]

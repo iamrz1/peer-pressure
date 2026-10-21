@@ -55,7 +55,11 @@ In an agent with slash commands:
 /peer-pressure --full 123      force the full pipeline
 /peer-pressure --quick 123     force the quick single-pass review
 /peer-pressure --width 120 123  table width in characters (default 140)
+/peer-pressure --base feat/a    review against this ref (branch mode, for a stacked branch)
+/peer-pressure --stack 123      review the whole stack that PR 123 is in (--single: only that PR)
 ```
+
+If PR 123 is part of a stack of PRs, you are asked whether to review only that PR or the whole stack. A whole-stack review runs the pipeline once on the combined diff, so problems between PRs are found. Each finding is then given to the PR that added the line, marked `#<number>` in the table, and posted as a pending review on that PR only.
 
 Elsewhere, ask in plain words: "Use the peer-pressure skill to review PR 123."
 
@@ -96,7 +100,7 @@ skills/peer-pressure/
   SKILL.md                    the orchestrator
   references/perspectives/    one prompt per reviewer
   references/pipeline/        merger, validator, triage, summary, planner, applier, formatter
-  scripts/                    route-diff.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, post-pending-review.sh
+  scripts/                    route-diff.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, post-pending-review.sh
 cmd/install/                  the installer
 internal/install/             copy and replace logic
 test/                         offline script tests with a stubbed gh
