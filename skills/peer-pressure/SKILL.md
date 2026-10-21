@@ -18,6 +18,7 @@ You orchestrate a review pipeline. Reviewers work alone, one merge step lists th
 Read the user's request for a target and flags.
 
 - `--full`: force the full pipeline. `--quick`: force the quick review. If both are given, say they conflict and stop. A flag always beats automatic routing, also in files mode.
+- `--single` or `--stack`: for a PR that is part of a stack, review only that PR or the whole stack. Without either, you ask in Step 2. Keep the choice as `STACK_MODE` (`single` or `stack`).
 - `--width N`: the width of the issues table in characters. Default 140. A script cannot detect the terminal width, so use this when the table wraps or leaves empty space. Keep the value as `WIDTH`.
 - `--base <ref>`: review against this ref instead of the detected base. Branch mode only. Keep the value as `BASE_OVERRIDE`.
 - A number is a PR (`MODE=pr`).
@@ -38,7 +39,13 @@ grep -qx '/.peer-pressure/' "$EXCLUDE" 2>/dev/null || echo '/.peer-pressure/' >>
 
 ## Step 2: Prepare the input
 
-**PR mode.** First check that the PR is in the right repo. Run `gh repo view --json nameWithOwner --jq .nameWithOwner` and `gh repo view "$(git remote get-url origin)" --json nameWithOwner --jq .nameWithOwner`. If they differ, ask the user to confirm, and tell them `gh repo set-default <owner/repo>` fixes the default. Stop unless they confirm. Then run:
+**PR mode.** First check that the PR is in the right repo. Run `gh repo view --json nameWithOwner --jq .nameWithOwner` and `gh repo view "$(git remote get-url origin)" --json nameWithOwner --jq .nameWithOwner`. If they differ, ask the user to confirm, and tell them `gh repo set-default <owner/repo>` fixes the default. Stop unless they confirm.
+
+Then check whether the PR is part of a stack: run `"$SKILL_DIR/scripts/find-stack.sh" <number> "$SESSION_DIR"`. It writes `stack.json` and prints `STACK_SIZE`, `STACK_PRS` (bottom to top) and `CURRENT_PR`. If `STACK_SIZE` is 1, set `STACK_MODE=single`. Otherwise, unless `--single` or `--stack` was given, ask: "PR #<number> is part of a stack: #a, #b, #c (bottom to top). Review only #<number>, or the whole stack?" and wait for the answer.
+
+**Whole stack.** Run `"$SKILL_DIR/scripts/stack-context.sh" "$SESSION_DIR"`. It collects every PR into `pr-<number>/` (that PR's own diff, metadata and review threads), and writes the combined diff as `input.txt`, `pr-meta.json` (an array, one entry per PR) and `prior-review.md` (the threads of all PRs). It prints `OWNER_REPO`, `STACK_PRS`, `TIP_PR`, `HEAD_SHA` (of the top PR), `PRIOR_THREADS` and `BASE_REF`. Keep them. If it fails, show the error and stop. Set `PRIOR_PREAMBLE` as below, and `STACK_PREAMBLE` as in the stack note. Skip the rest of this PR-mode text.
+
+**One PR.** Run:
 
 ```bash
 "$SKILL_DIR/scripts/pr-context.sh" <number> "$SESSION_DIR"
@@ -59,7 +66,14 @@ If `STACKED` is true, the PR sits on top of another branch and the diff holds on
 
 **Branch mode.** Find the base with `"$SKILL_DIR/scripts/find-base.sh"`, adding `--base "$BASE_OVERRIDE"` when given. It prints `BASE`, `MERGE_BASE`, `STACKED`, `PARENT_PR` and `REASON`. Tell the user the base and the reason in one line, and that `--base <ref>` changes it. Run `git diff "$MERGE_BASE" > "$SESSION_DIR/input.txt"`. If `STACKED` is true, set `STACK_PREAMBLE` as below.
 
-**Stack note.** A stacked change builds on a parent branch that is reviewed on its own. `STACK_PREAMBLE` is:
+**Stack note.** For a whole-stack review, `STACK_PREAMBLE` is:
+
+```
+## Stack of PRs
+This is one review of a stack of PRs: <#a, #b, #c> (bottom to top). The diff is the combined change from <BASE_REF> to the top PR. Review it as one change. Also look for problems between the PRs, such as a later PR breaking something an earlier one adds.
+```
+
+For a single stacked PR or branch, which builds on a parent that is reviewed on its own, it is:
 
 ```
 ## Stacked change
@@ -157,16 +171,20 @@ Start them in one batch when you can, otherwise run them in turn. Validators mus
 ## Step 8: Score, triage and report
 
 1. Score. Run `"$SKILL_DIR/scripts/score-findings.sh" "$SESSION_DIR" $QUICK`. `QUICK` is `--quick` for a quick review or an empty merge, and empty otherwise. It keeps the findings that most validators confirmed, adds the lens scores, derives the labels, writes `scored.json` and prints a stats line. Keep the line. If it exits with 3, say that no validator produced readable votes, and stop.
+
+   Whole stack: also run `"$SKILL_DIR/scripts/assign-prs.sh" "$SESSION_DIR"`. It adds the owning PR to each finding, and prints how many findings each PR has. A finding on a line no PR added has no owner and stays in the stack summary only.
 2. Triage. If `scored.json` has findings, run one agent with `references/pipeline/triage.md`:
 
    ```
    Read <SKILL_DIR>/references/pipeline/triage.md and follow it exactly.
-   Read the findings <SESSION_DIR>/scored.json and the input <SESSION_DIR>/input.txt. In PR mode, also read <SESSION_DIR>/pr-meta.json.
+   Read the findings <SESSION_DIR>/scored.json and the input <SESSION_DIR>/input.txt. In PR mode, also read <SESSION_DIR>/pr-meta.json (an array in a whole-stack review).
    Write the decisions to <SESSION_DIR>/triage.json.
    ```
 
    If it fails, warn the user and continue. The urgency column stays empty and a critical finding blocks the merge.
 3. Report. Run `"$SKILL_DIR/scripts/build-report.sh" "$SESSION_DIR"`. It writes `report.json` and `synthesis.md` and prints a stats line. Keep it.
+
+   Whole stack: then run `"$SKILL_DIR/scripts/assign-prs.sh" "$SESSION_DIR" --split`. It builds `pr-<number>/report.json` and `pr-<number>/synthesis.md` from that PR's findings, and prints one stats line per PR. Keep them.
 
 ## Step 9: Summary
 
@@ -182,6 +200,8 @@ The summary agent writes the prose. A script draws the issues table.
    Write the summary to <SESSION_DIR>/summary.md.
    ```
 
+   Whole stack: the same as PR mode, but say "The input is a stack of PRs" and also read `<SESSION_DIR>/stack.json`.
+
    Branch and files mode: the same, but say "The input is <INPUT_DESCRIPTION>", and read only `report.json` and `input.txt`.
 
    Some hosts do not let subagents write report files. If `summary.md` is missing but the agent returned the summary as text, use that text. Do not retry the write or write the file around the block. If there is no summary at all, warn the user and show the stats lines instead. The agent may also write `prior.json` in the session directory. That file is optional.
@@ -193,13 +213,13 @@ Always show the review before doing anything else.
 
 - Print the summary prose exactly as returned, without its path line. Then print `## Issues` and the output of `render-table.sh` unchanged. Do not retype or reflow the table.
 - Say where the session files are, which pipeline ran (quick, or full with the mode), and which reviewers failed.
-- If the change is stacked, say which base it was reviewed against.
+- If the change is stacked, say which base it was reviewed against. For a whole stack, say which PRs were reviewed and list the stats line of each PR.
 - Show the stats lines from Step 8, and how many findings the validators dropped. If the table has fewer rows than the stats, say how many findings the prior comments dismissed.
 - If there are no issues, say so and stop.
 
 Then ask:
 
-- PR mode: "What next? (1) post a pending GitHub review, (2) apply fixes locally, (3) both, (4) nothing."
+- PR mode: "What next? (1) post a pending GitHub review, (2) apply fixes locally, (3) both, (4) nothing." For a whole stack, (1) posts one pending review per PR, each with only that PR's findings, and (2) applies the fixes for the PR on the current branch.
 - Other modes: "Apply the fixes?"
 
 Do nothing more until the user answers.
@@ -208,7 +228,7 @@ Do nothing more until the user answers.
 
 Only when asked.
 
-1. PR mode: compare `gh pr view <number> --json headRefName --jq .headRefName` with `git branch --show-current`. If they differ, tell the user to run `gh pr checkout <number>` first, and stop.
+1. PR mode: compare `gh pr view <number> --json headRefName --jq .headRefName` with `git branch --show-current`. If they differ, tell the user to run `gh pr checkout <number>` first, and stop. Whole stack: find the PR in `stack.json` whose `headRefName` is the current branch. If none matches, tell the user to check out the branch of the PR to fix, and stop. Use `<SESSION_DIR>/pr-<number>/synthesis.md` for that PR in place of `synthesis.md` below.
 2. Planner: `references/pipeline/planner.md`. Prompt: "Read the synthesis at <SESSION_DIR>/synthesis.md. Write the implementation plan to <SESSION_DIR>/implementation-plan.md."
 3. Plan validator: `references/pipeline/plan-validator.md`. Prompt: "Read the plan <SESSION_DIR>/implementation-plan.md, the synthesis <SESSION_DIR>/synthesis.md and the input <SESSION_DIR>/input.txt. Write the validated plan to <SESSION_DIR>/validated-plan.md." If it fails, warn the user and use the unvalidated plan.
 4. Show the user the planner summary and validation stats.
@@ -223,6 +243,8 @@ Only when asked.
 2. Preview: run `"$SKILL_DIR/scripts/post-pending-review.sh" <PR_NUMBER> "$SESSION_DIR/threads.json" --dry-run` and show the output to the user unchanged.
 3. Ask: "Post these comments to PR #<number> as a PENDING review? Nothing is submitted. You submit it in GitHub. (yes/no)"
 4. Only on "yes", run the same command without `--dry-run`. Show its output and remind the user that the review is pending and they submit it in GitHub.
+
+Whole stack: do this for each PR in `stack.json` that has findings, bottom to top. Use `pr-<number>/synthesis.md`, `pr-<number>/input.txt` and `pr-<number>/prior-review.md`, the head SHA from `pr-<number>/pr-meta.json` (`headRefOid`), and write `pr-<number>/threads.json`. Preview and ask for each PR on its own. A yes for one PR does not cover the next.
 
 If the user says no or wants changes, do not post. `threads.json` can be edited and this step rerun.
 

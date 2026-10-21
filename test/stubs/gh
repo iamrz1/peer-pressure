@@ -6,11 +6,19 @@ case "$1 $2" in
     if [[ "$*" == *defaultBranchRef* ]]; then echo "${GH_STUB_DEFAULT:-main}"; else echo "octo/demo"; fi ;;
   "pr view")
     if [ -n "${GH_STUB_NOPR:-}" ]; then echo "no pull requests found" >&2; exit 1; fi
-    if [[ "$*" == *baseRefName* && "$*" == *--jq* ]]; then echo "${GH_STUB_BASE:-main}"
+    if [[ -n "${GH_STUB_STACK:-}" && "$*" == *number,title* ]]; then jq -c --argjson n "$3" '.[] | select(.number == $n)' "$GH_STUB_STACK"
+    elif [[ "$*" == *baseRefName* && "$*" == *--jq* ]]; then echo "${GH_STUB_BASE:-main}"
     elif [[ "$*" == *headRefOid* && "$*" == *--jq* ]]; then echo "abc123"; else
       echo '{"title":"t","body":"b","url":"u","headRefOid":"abc123","headRefName":"h","baseRefName":"'"${GH_STUB_BASE:-main}"'"}'; fi ;;
-  "pr list") echo "${GH_STUB_PARENT:-}" ;;
+  "pr list")
+    if [ -n "${GH_STUB_STACK:-}" ]; then
+      case "$*" in
+        *"--head "*) jq -c --arg b "$(sed 's/.*--head \([^ ]*\).*/\1/' <<<"$*")" '[.[] | select(.headRefName == $b)]' "$GH_STUB_STACK" ;;
+        *"--base "*) jq -c --arg b "$(sed 's/.*--base \([^ ]*\).*/\1/' <<<"$*")" '[.[] | select(.baseRefName == $b)]' "$GH_STUB_STACK" ;;
+      esac
+    else echo "${GH_STUB_PARENT:-}"; fi ;;
   "pr diff") cat "$GH_STUB_DIFF" ;;
+  "api repos/"*) cat "$GH_STUB_DIFF" ;;
   "api graphql") cat "$GH_STUB_THREADS" ;;
   "api --method") echo "$*" >>"${GH_STUB_LOG:-/dev/null}"; cat >>"${GH_STUB_LOG:-/dev/null}"; echo '{"html_url":"https://github.com/octo/demo/pull/1#pullrequestreview-1"}' ;;
   *) echo "gh stub: unhandled: $*" >&2; exit 1 ;;

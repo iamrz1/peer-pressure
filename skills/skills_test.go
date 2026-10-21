@@ -197,7 +197,7 @@ func TestReviewersDropNitsEarly(t *testing.T) {
 
 func TestStackedChangesAreHandled(t *testing.T) {
 	doc := skillFile(t, "SKILL.md")
-	for _, want := range []string{"find-base.sh", "STACK_PREAMBLE", "--base", "STACKED"} {
+	for _, want := range []string{"find-base.sh", "find-stack.sh", "stack-context.sh", "assign-prs.sh", "STACK_PREAMBLE", "--base", "--stack", "--single", "STACKED"} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("SKILL.md does not mention %q", want)
 		}
