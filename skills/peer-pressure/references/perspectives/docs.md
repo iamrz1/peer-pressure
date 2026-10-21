@@ -13,10 +13,10 @@ You will receive a path to an input file. This may be a diff, a spec, a plan, or
 
 Your prompt may include sections titled "Project Context" and "Prior findings". Rules:
 
-- **Project Context:** If your prompt includes a "Project Context" section (version, deployment model), use it to calibrate severity:
-  - v0.x.0 projects are in active development: stale comments and docs are **suggestion**-level, not **critical** or **warning**.
+- **Project Context:** If your prompt includes a "Project Context" section (version, deployment model), use it to calibrate what to report:
+  - v0.x.0 projects are in active development: stale comments and docs are nits. Skip them unless they would make someone misuse the code.
   - Published libraries (v1+) must maintain accurate docs: flag stale docs that contradict code as **critical** or **warning**.
-  - Internal tools have lower documentation burden than public APIs: cosmetic doc issues are **suggestion**, not **warning**.
+  - Internal tools have lower documentation burden than public APIs: cosmetic doc issues are nits. Skip them.
 - **Prior findings:** Do NOT re-report prior findings.
 
 ## Review checklist
@@ -30,6 +30,17 @@ Your prompt may include sections titled "Project Context" and "Prior findings". 
 
 Use `git log` and `git show` to check if comments/docs were updated to match code changes.
 
+## Drop nits early
+
+Report a finding only if the author would likely act on it. Do not write down:
+
+- naming, wording or formatting preferences that nobody would block a merge on
+- style that a linter or formatter already enforces
+- changes that only make the code slightly shorter or tidier
+- anything whose consequence you cannot state in one sentence
+
+If the best case for fixing it is "a small improvement", leave it out. A short review of real issues beats a long one with nits.
+
 ## Output format
 
 Write your review to the output path provided. Use this format for each finding:
@@ -37,7 +48,7 @@ Write your review to the output path provided. Use this format for each finding:
 ```
 ## [Short Issue Title]
 **File:** path/to/file:line
-**Severity:** critical | warning | suggestion
+**Severity:** critical | warning
 **What is wrong:** [1-2 sentences]
 **Impact:** [1 sentence — misleads readers, wastes attention, causes confusion]
 **Recommended change:** [1-2 sentences]
@@ -47,13 +58,12 @@ Severity guide:
 
 - **critical:** Doc/comment claims something false that would cause an implementer to build the wrong thing or misuse an API. Stale wording that is obviously outdated (and thus unlikely to mislead) is NOT critical.
 - **warning:** Duplicate or stale content that wastes reader attention
-- **suggestion:** Verbose text that could be tightened
 
 ## Scope constraints
 
 - **Only flag issues attributable to the diff under review.** Pre-existing documentation problems in unchanged code are out of scope unless the diff makes them actively worse.
 - **ADRs (Architecture Decision Records) are historical documents.** Do not flag them for being "stale" — they record the decision at the time it was made. Only flag ADRs if the diff explicitly modifies them and introduces inconsistencies.
-- **Test code cosmetics** (test function names, test descriptions) are suggestions at most, never warnings or critical.
+- **Test code cosmetics** (test function names, test descriptions) are nits. Do not report them.
 
 If you find no issues, write: "No documentation issues found."
 
@@ -61,4 +71,4 @@ Be concise. No preamble or filler. Each finding should be actionable in 3-5 line
 
 ## Response contract
 
-After writing your review file, your ONLY response must be the absolute path to your output file and a single stats line (e.g., "1 critical, 2 warnings, 1 suggestion"). Do not summarize findings. Do not include any other text.
+After writing your review file, your ONLY response must be the absolute path to your output file and a single stats line (e.g., "1 critical, 2 warnings"). Do not summarize findings. Do not include any other text.

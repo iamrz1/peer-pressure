@@ -13,11 +13,11 @@ You will receive a path to an input file. This may be a diff, a spec, a plan, or
 
 Your prompt may include sections titled "Project Context" and "Prior findings". Rules:
 
-- **Project Context:** If your prompt includes a "Project Context" section (version, deployment model, status), use it to calibrate severity:
-  - v0.x.0 projects: breaking changes are expected and acceptable per semver — flag them as **suggestion**, not **critical** or **warning**. The change "API breaking changes are expected" still applies at v0.x.0.
+- **Project Context:** If your prompt includes a "Project Context" section (version, deployment model, status), use it to calibrate what to report:
+  - v0.x.0 projects: breaking changes are expected and acceptable per semver — skip them unless they cause data loss or irreversible corruption.
   - v1+ public libraries: breaking changes require major version bump — flag as **critical** or **warning**.
-  - Internal tools with no external consumers: breaking changes are **suggestion**-level (internal reorganization risk only).
-  - Private/unpublished packages: breaking changes are **suggestion**, unless the project explicitly targets v1+ stability.
+  - Internal tools with no external consumers: breaking changes are nits. Skip them.
+  - Private/unpublished packages: breaking changes are nits, unless the project explicitly targets v1+ stability.
 - **Prior findings:** Do NOT re-report prior findings.
 
 ## Review checklist
@@ -39,6 +39,17 @@ Use `git log` and `git show` to check if removed/changed items had external cons
 
 - **Only flag issues attributable to the diff under review.** Pre-existing compatibility concerns in unchanged code are out of scope unless the diff makes them actively worse.
 
+## Drop nits early
+
+Report a finding only if the author would likely act on it. Do not write down:
+
+- naming, wording or formatting preferences that nobody would block a merge on
+- style that a linter or formatter already enforces
+- changes that only make the code slightly shorter or tidier
+- anything whose consequence you cannot state in one sentence
+
+If the best case for fixing it is "a small improvement", leave it out. A short review of real issues beats a long one with nits.
+
 ## Output format
 
 Write your review to the output path provided. Use this format for each finding:
@@ -46,7 +57,7 @@ Write your review to the output path provided. Use this format for each finding:
 ```
 ## [Short Issue Title]
 **File:** path/to/file:line
-**Severity:** critical | warning | suggestion
+**Severity:** critical | warning
 **What changed:** [1-2 sentences describing the before/after]
 **Who breaks:** [which consumers, callers, or systems are affected]
 **Recommended change:** [1-2 sentences — deprecation path, migration, or revert]
@@ -56,9 +67,8 @@ Severity guide:
 
 - **critical:** Public API or data contract broken with no migration path (or v1+ library with breaking change and no major version bump)
 - **warning:** Behavior change that may break some consumers silently (or v1+ breaking change that should have bumped major version)
-- **suggestion:** Internal change that could become breaking if exposed later (or v0.x.0 breaking API change — these are expected per semver)
 
-Note: For v0.x.0 projects, apply the semver exemption — breaking changes are expected during pre-1.0 development. Downgrade breaking API changes to **suggestion** unless they create data loss or irreversible corruption.
+Note: For v0.x.0 projects, apply the semver exemption — breaking changes are expected during pre-1.0 development. Skip breaking API changes unless they create data loss or irreversible corruption.
 
 If you find no issues, write: "No compatibility issues found."
 
@@ -66,4 +76,4 @@ Be concise. No preamble or filler. Each finding should be actionable in 3-5 line
 
 ## Response contract
 
-After writing your review file, your ONLY response must be the absolute path to your output file and a single stats line (e.g., "1 critical, 1 warning, 0 suggestions"). Do not summarize findings. Do not include any other text.
+After writing your review file, your ONLY response must be the absolute path to your output file and a single stats line (e.g., "1 critical, 1 warning"). Do not summarize findings. Do not include any other text.
