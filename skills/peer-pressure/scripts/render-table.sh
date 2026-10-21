@@ -11,7 +11,8 @@
 #
 # prior.json is optional: [{"id": "F2", "login": "alice", "resolved": false,
 # "dismiss": false}]. A finding with a prior comment gets a marker at the end of
-# its Review cell. A finding with "dismiss": true is left out. Needs jq.
+# its Review cell. A finding with "dismiss": true is left out. In a stack review a
+# finding with a "pr" number starts its File cell with "#<number>". Needs jq.
 set -euo pipefail
 
 usage() {
@@ -105,7 +106,7 @@ jq -r --argjson width "$width" --slurpfile prior "$prior" '
       ($F | map(
          {
            n: (.n | tostring),
-           file: (.file + (if .line then ":" + (.line | tostring) else "" end)),
+           file: ((if (.pr // null) != null then "#" + (.pr | tostring) + " " else "" end) + .file + (if .line then ":" + (.line | tostring) else "" end)),
            sev: ((.label | sev_emoji) + " (" + (.score | tostring) + ")"),
            urg: (.urgency | urgency_label),
            review: (([icons] | map(select(length > 0)) | join(" ")) as $i
