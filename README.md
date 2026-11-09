@@ -57,11 +57,24 @@ In an agent with slash commands:
 /peer-pressure --width 120 123  table width in characters (default 140)
 /peer-pressure --base feat/a    review against this ref (branch mode, for a stacked branch)
 /peer-pressure --stack 123      review the whole stack that PR 123 is in (--single: only that PR)
+/peer-pressure babysit 123      keep reviewing PR 123 until it is merged or closed
 ```
 
 If PR 123 is part of a stack of PRs, you are asked whether to review only that PR or the whole stack. A whole-stack review runs the pipeline once on the combined diff, so problems between PRs are found. Each finding is then given to the PR that added the line, marked `#<number>` in the table, and posted as a pending review on that PR only.
 
 Elsewhere, ask in plain words: "Use the peer-pressure skill to review PR 123."
+
+### Babysit
+
+`babysit 123` follows someone else's PR to the end. You say yes once, then it runs on its own until the PR is merged or closed, you tell it to stop, or you close the terminal. Running it again resumes from where it stopped.
+
+- On each push it reviews only what changed since its last review. A merge of the base branch does not bring in the base's own changes.
+- It posts only findings at `ask` urgency or above (`--min-urgency` changes that), so there are no nitpicks.
+- Findings and replies go into your pending review. You submit it. It never submits, merges or pushes.
+- It replies to its threads and resolves one when the code shows the fix. Resolving takes effect at once.
+- It tells you when it adds something, when a thread needs you, and when the PR looks ready to merge. That notice comes once per head and does not end the run.
+
+The state of a run is in `.peer-pressure/babysit-pr-<number>/state.json`. See `references/babysit.md` for the procedure.
 
 PR mode needs the [GitHub CLI](https://cli.github.com/) (`gh`, logged in) and `jq`. Branch and files modes need only `git`.
 
@@ -91,7 +104,8 @@ On a PR that already has review threads, reviewers skip points that are already 
 ## Safety
 
 - The review is shown before anything else happens.
-- Posted reviews stay **pending**. You submit them in GitHub. The posting script refuses any payload that could submit a review.
+- Posted reviews stay **pending**. You submit them in GitHub. The posting scripts never call a submit endpoint.
+- Babysit acts without asking after the first yes, but only on that PR, and only by adding to your pending review, replying and resolving threads.
 - Comments on lines outside the diff go into the review body, because GitHub rejects the whole review otherwise.
 - Review files live in `.peer-pressure/` in the repo and are excluded through `.git/info/exclude`. Your `.gitignore` is not touched.
 - Do not review changes that contain personal data, health data or secrets with a tool you have not cleared for that. The review text is sent to your agent's model provider, and posted comments go to GitHub.
@@ -104,7 +118,8 @@ skills/peer-pressure/
   references/perspectives/    one checklist per perspective
   references/bar.md           the review bar every reviewer and the verifier applies
   references/pipeline/        reviewer, verifier, urgency, quick-reviewer, summary, planner, applier, formatter
-  scripts/                    route-diff.sh, split-diff.sh, cluster-findings.sh, apply-verdicts.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, post-pending-review.sh
+  references/babysit.md       the babysit procedure
+  scripts/                    route-diff.sh, split-diff.sh, cluster-findings.sh, apply-verdicts.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, diff-lines.sh, post-pending-review.sh, babysit-state.sh, babysit-poll.sh, babysit-wait.sh, babysit-delta.sh, babysit-post.sh
 cmd/install/                  the installer
 internal/install/             copy and replace logic
 test/                         offline script tests with a stubbed gh

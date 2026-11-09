@@ -1,6 +1,6 @@
 ---
 name: peer-pressure
-description: Multi-agent code review where reviewers covering correctness, security, architecture, docs, compatibility, performance and maintainability raise findings with evidence, and an independent verifier tries to disprove each one before anything is reported. Reviews a GitHub PR, the current branch, or specific files. Shows the review first, then offers to apply fixes or post a pending PR review. Use when asked to review a PR, a branch, a diff, or files.
+description: Multi-agent code review where reviewers covering correctness, security, architecture, docs, compatibility, performance and maintainability raise findings with evidence, and an independent verifier tries to disprove each one before anything is reported. Reviews a GitHub PR, the current branch, or specific files. Shows the review first, then offers to apply fixes or post a pending PR review. `babysit <PR>` keeps reviewing a PR until it is merged or closed. Use when asked to review a PR, a branch, a diff, or files, or to babysit a PR.
 license: MIT
 compatibility: Needs git. PR mode and posting also need gh (authenticated) and jq. Runs reviewers in parallel when the host can start subagents, and one after another otherwise.
 metadata:
@@ -15,7 +15,9 @@ You orchestrate a review pipeline. Three reviewers work alone, each through two 
 
 ## Step 1: Parse the request
 
-Read the user's request for a target and flags.
+If the request starts with `babysit`, read `references/babysit.md` and follow it instead of the steps below. It reuses Steps 3 to 8 and Step 12 for each pass.
+
+Otherwise read the user's request for a target and flags.
 
 - `--full`: force the full pipeline. `--quick`: force the quick review. If both are given, say they conflict and stop. A flag always beats automatic routing, also in files mode.
 - `--single` or `--stack`: for a PR that is part of a stack, review only that PR or the whole stack. Without either, you ask in Step 2. Keep the choice as `STACK_MODE` (`single` or `stack`).
@@ -227,7 +229,7 @@ If the user says no or wants changes, do not post. `threads.json` can be edited 
 
 ## Rules
 
-- Never apply fixes or post comments without the user's answer in Step 10.
+- Never apply fixes or post comments without the user's answer in Step 10. The one exception is `babysit`: the user's yes at the start of a babysit run covers adding to their pending review, replying to threads and resolving threads on that PR. Nothing else, and never another PR.
 - Never submit a GitHub review. Posted reviews stay pending. Never call a submit endpoint yourself.
 - Keep your own context small. Use the paths, stats lines and summaries that steps return. Do not read findings, candidates or verdicts files yourself. You read `report.json`, the change notes and the PR files in Step 9, `scored.json` in the quick path, and the dry-run output in Step 12.
 - If a step fails, say which one and continue with what you have, unless the step says stop.

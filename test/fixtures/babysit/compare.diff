@@ -1,0 +1,14 @@
+diff --git a/pkg/a.go b/pkg/a.go
+index 2222222..3333333 100644
+--- a/pkg/a.go
++++ b/pkg/a.go
+@@ -12,1 +12,2 @@ func f() {
+ 	two()
++	three()
+diff --git a/vendor/base.go b/vendor/base.go
+index 4444444..5555555 100644
+--- a/vendor/base.go
++++ b/vendor/base.go
+@@ -1,1 +1,2 @@
+ x
++y

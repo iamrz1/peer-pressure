@@ -1,0 +1,17 @@
+{
+  "state": "OPEN",
+  "isDraft": false,
+  "headRefOid": "abc123",
+  "mergeable": "MERGEABLE",
+  "reviewDecision": "",
+  "author": {
+    "login": "carol"
+  },
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "status": "IN_PROGRESS",
+      "conclusion": null
+    }
+  ]
+}

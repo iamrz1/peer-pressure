@@ -1,0 +1,5 @@
+{"summary":"Second pass.","threads":[
+ {"path":"pkg/a.go","line":12,"startLine":11,"body":"inline finding"},
+ {"path":"pkg/a.go","line":99,"body":"outside the diff"}],
+ "replies":[{"threadId":"PRRT_own","body":"Looks fixed."}],
+ "resolve":["PRRT_own"]}

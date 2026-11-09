@@ -39,23 +39,8 @@ jq -e '(.threads | type) == "array"' "$threads_file" >/dev/null ||
 owner_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 head_sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
 
-# Every new-side line that a review comment may anchor to: "path<TAB>line".
-valid_lines=$(gh pr diff "$pr" | awk '
-  /^diff --git / { in_hunk = 0; path = ""; next }
-  !in_hunk && /^\+\+\+ / { if ($0 != "+++ /dev/null") { path = substr($0, 5); sub(/^b\//, "", path) } next }
-  /^@@ / {
-    in_hunk = 1
-    split($0, parts, " ")
-    n = substr(parts[3], 2)
-    sub(/,.*/, "", n)
-    next
-  }
-  in_hunk && path != "" {
-    c = substr($0, 1, 1)
-    if (c == "+" || c == " ") { print path "\t" n; n++ }
-  }
-')
-valid_json=$(jq -Rn '[inputs | split("\t") | {(.[0] + ":" + .[1]): true}] | add // {}' <<<"$valid_lines")
+# Every new-side line that a review comment may anchor to: {"path:line": true}.
+valid_json=$("$(dirname "${BASH_SOURCE[0]}")/diff-lines.sh" "$pr")
 
 payload=$(jq --arg sha "$head_sha" --argjson valid "$valid_json" '
   def anchored: (.path != null and .line != null and ($valid[(.path + ":" + (.line | tostring))] // false)
