@@ -7,8 +7,9 @@
 #        moi-track.sh <state-dir> cycle
 #        moi-track.sh <state-dir> get <key>
 #
-# The state is <state-dir>/state.json. `init` creates it and leaves an existing one
-# alone, so a restarted run resumes. It also holds what babysit-poll.sh --as author
+# The state is <state-dir>/state.json. `init` creates it. On an existing state it only
+# adds the keys that are missing and never changes one that is set, so a restarted run
+# resumes, and the state that babysit-state.sh init and workdir.sh made first is kept. It also holds what babysit-poll.sh --as author
 # reads (ownerRepo, lastSeenAt, readyNotifiedSha, ciHandledSha), and
 # babysit-state.sh can set those. `round` records one review. It reads the
 # findings of report.json, counts the ones not seen in an earlier round (NEW) and
@@ -48,13 +49,12 @@ case "$cmd" in
   init)
     { [ "$#" -eq 1 ] || [ "$#" -eq 2 ]; } || usage
     mkdir -p "$dir"
-    if [ ! -s "$file" ]; then
-      jq -n --arg base "$1" --arg repo "${2:-}" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{
-        baseSha: $base, lastSha: $base, startedAt: $now, rounds: 0, total: 0, seen: [],
-        ownerRepo: (if $repo == "" then null else $repo end), lastSeenAt: $now,
-        readyNotifiedSha: null, ciHandledSha: null
-      }' >"$file"
-    fi
+    [ -s "$file" ] || echo '{}' >"$file"
+    jq --arg base "$1" --arg repo "${2:-}" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{
+      baseSha: $base, lastSha: $base, startedAt: $now, rounds: 0, total: 0, seen: [],
+      ownerRepo: (if $repo == "" then null else $repo end), lastSeenAt: $now,
+      readyNotifiedSha: null, ciHandledSha: null
+    } + (. | with_entries(select(.value != null)))' "$file" | write
     ;;
   get)
     [ "$#" -eq 1 ] || usage

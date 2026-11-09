@@ -7,6 +7,7 @@
 ## What it never does
 
 - Merge, push or force-push, or change the PR's code. Babysit reviews only.
+- Touch the user's checkout or working tree. It works in its own temporary clone.
 - Submit a review. Everything it writes goes into the user's pending review. The user submits it.
 - Reply or post anything when no one asked it to babysit this PR.
 - Stop by itself before the PR is merged or closed. Only the user stops it, or closing the terminal.
@@ -17,6 +18,8 @@ Resolving a thread is the one action that takes effect at once, because GitHub h
 
 1. Parse the request: `babysit <number>`, with optional `--interval SECONDS` (default 60) and `--min-urgency insist|ask|author|optional` (default `ask`). A babysit run posts only findings at that urgency or above, so there are no nitpicks. Keep the values as `INTERVAL` and `MIN_URGENCY`.
 2. Check the repo as in Step 2 of `SKILL.md`. Set `BABYSIT_DIR="$REPO_ROOT/.peer-pressure/babysit-pr-<number>"` (it is already excluded from git) and run `"$SKILL_DIR/scripts/babysit-state.sh" "$BABYSIT_DIR" init <number> <owner/repo>`. If the state already existed, tell the user you are resuming and from which pass.
+
+   The state and the session files stay in `BABYSIT_DIR`, in the user's repo, so that a closed terminal does not lose them. The code is read in a temporary clone: if `"$SKILL_DIR/scripts/workdir.sh" path "$BABYSIT_DIR"` prints a directory, reuse it. Otherwise run `"$SKILL_DIR/scripts/workdir.sh" create <number> <owner/repo> "$BABYSIT_DIR" --read-only`. Keep `WORKDIR`. It is the PR's head, checked out detached. The user's own checkout can be on any branch and in any state.
 3. Run `"$SKILL_DIR/scripts/babysit-poll.sh" <number> "$BABYSIT_DIR"`. If `STATE` is not `OPEN`, say so and stop. If `VIEWER` equals `AUTHOR`, say that babysit reviews other people's PRs and stop.
 4. If `~/memory/` exists, keep a short note in `~/memory/<task>.md`, where `<task>` is the ticket or branch name. Re-read the file before each write and append a timestamped line. Ask the user before creating a file that does not exist yet.
 5. Ask once:
@@ -44,9 +47,9 @@ Notify the user with the host's notification tool when there is one, and always 
 
 ## Review pass
 
-Review what changed since the last review, not the whole PR again.
+Review what changed since the last review, not the whole PR again. Run every `git` and `gh` command and every script from `WORKDIR`, so that `gh` resolves the PR's repo. Wherever Steps 3 to 8 of `SKILL.md` give the repository to read, give `WORKDIR`, not the user's checkout.
 
-1. `SESSION_DIR="$BABYSIT_DIR/pass-<pass>"`, where `<pass>` is the `pass` value in the state plus one. Run `"$SKILL_DIR/scripts/babysit-delta.sh" <number> "$BABYSIT_DIR" "$SESSION_DIR"`. Keep `DELTA` and `FROM_SHA`.
+1. `SESSION_DIR="$BABYSIT_DIR/pass-<pass>"`, where `<pass>` is the `pass` value in the state plus one. Run `"$SKILL_DIR/scripts/workdir.sh" sync "$BABYSIT_DIR"` to bring the clone to the current head. Then, from `WORKDIR`, run `"$SKILL_DIR/scripts/babysit-delta.sh" <number> "$BABYSIT_DIR" "$SESSION_DIR"`. Keep `DELTA` and `FROM_SHA`.
    - `none`: nothing to review. Go to the **Thread pass**.
    - `full`: the first pass, or the branch was force-pushed. Review the whole PR and say which.
 2. Follow Steps 3 to 8 of `SKILL.md` with `input.txt` as the change, with these differences:
@@ -91,8 +94,10 @@ When it succeeds, record the pass:
 
 ## Finish
 
-When `STATE` is `MERGED` or `CLOSED`: tell the user which, with the number of passes, comments and resolved threads. Add the last line to the task note if you keep one. Stop. Do not start another wait.
+When `STATE` is `MERGED` or `CLOSED`: tell the user which, with the number of passes, comments and resolved threads. Add the last line to the task note if you keep one. Do not start another wait.
+
+Whenever the run ends, also when the user says stop, run `"$SKILL_DIR/scripts/workdir.sh" remove "$BABYSIT_DIR"`. It deletes the clone only when that loses nothing. If it prints `KEPT`, tell the user the directory and the reason. Then stop.
 
 ## Resume
 
-Running `babysit <number>` again continues from `state.json`. Pending comments from the earlier run are still in the user's pending review. Ask the question in Start step 5 again.
+Running `babysit <number>` again continues from `state.json`. Pending comments from the earlier run are still in the user's pending review. The clone from the earlier run is reused when it is still there, and made again when it is not. Ask the question in Start step 5 again.

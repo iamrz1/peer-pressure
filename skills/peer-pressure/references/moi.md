@@ -10,19 +10,22 @@
 - Merge the PR, or submit a review.
 - Resolve a thread that someone else started. That is the reviewer's call.
 - Push to any branch except the PR's own, or touch commits that were there before the run.
-- Throw work away. If something fails it stops and leaves the changes in the working tree.
+- Touch the user's checkout or working tree when there is a PR. It works in its own temporary clone, so the user's branch and uncommitted changes do not matter.
+- Throw work away. If something fails it stops and keeps the clone with the changes in it. It deletes the clone only when that clone is clean and everything in it is pushed.
 - Mark the PR ready, or say it is done, while the local loop has findings it could not clear.
 - Work on files that are not under git. Files mode is not supported. Use a branch.
 
 ## Start
 
 1. Parse the request: `moi [<number>]` with optional `--min-urgency insist|ask|author|optional` (default `ask`), `--max-rounds N` (default 5), `--interval SECONDS` (default 60) and `--pending-replies`. Keep the values as `MIN_URGENCY`, `MAX_ROUNDS`, `INTERVAL` and `PENDING_REPLIES`. A round applies only findings at that urgency or above, so it never chases nitpicks. By default replies to reviewers are posted at once. With `--pending-replies` they go into the user's pending review, and the user submits it.
-2. With a number, the PR must be the branch that is checked out. Compare `gh pr view <number> --json headRefName --jq .headRefName` with `git branch --show-current`. If they differ, tell the user to run `gh pr checkout <number>` and stop. Without a number, use the PR of the current branch (`gh pr view --json number --jq .number`). If there is none, the target is the branch against its base, and `moi` runs only the **Local loop**. Say that you did not push, and that the user should open a PR and run `moi` again to continue.
-3. The working tree must be clean: `git status --porcelain` prints nothing. Each round is committed with `git add -A`, so unrelated changes would end up in it. If the tree is dirty, say so and stop.
-4. Set `MOI_DIR="$REPO_ROOT/.peer-pressure/moi-<label>"`, where `<label>` is `pr-<number>` or the branch name with `/` replaced by `-`. Run `"$SKILL_DIR/scripts/moi-track.sh" "$MOI_DIR" init "$(git rev-parse HEAD)" <owner/repo>`, and with a PR also `"$SKILL_DIR/scripts/babysit-state.sh" "$MOI_DIR" set pr=<number>`. If a state already existed, tell the user you are resuming and from which round.
+2. Find the PR. With a number, use it. Without one, use the PR of the current branch (`gh pr view --json number --jq .number`). If there is none, the target is the current branch against its base, and `moi` runs only the **Local loop**, in place, in the user's checkout. Then the working tree must be clean (`git status --porcelain` prints nothing), because each round is committed with `git add -A` and unrelated changes would end up in it. If it is dirty, say so and stop. Say that you did not push, and that the user should open a PR and run `moi` again to continue. In this case `WORKDIR` is `REPO_ROOT` and there is no clone to remove.
+3. Set `MOI_DIR="$REPO_ROOT/.peer-pressure/moi-<label>"`, where `<label>` is `pr-<number>` or the branch name with `/` replaced by `-`. The state and the session files stay there, in the user's repo, so that a closed terminal does not lose them. With a PR run `"$SKILL_DIR/scripts/babysit-state.sh" "$MOI_DIR" init <number> <owner/repo>`. If a state already existed, tell the user you are resuming and from which round.
+4. With a PR, make the working clone. If `"$SKILL_DIR/scripts/workdir.sh" path "$MOI_DIR"` prints a directory, reuse it. Otherwise run `"$SKILL_DIR/scripts/workdir.sh" create <number> <owner/repo> "$MOI_DIR"`. Keep `WORKDIR`. It is a temporary clone of the repository, on the PR's branch with its upstream set. Then run `"$SKILL_DIR/scripts/moi-track.sh" "$MOI_DIR" init "$(git -C "$WORKDIR" rev-parse HEAD)" <owner/repo>`. Without a PR run the same `moi-track.sh` line with `git rev-parse HEAD` from the checkout.
+
+   From here, run every `git` and `gh` command and every script from `WORKDIR`, so that `gh` resolves the PR's repo. Wherever Steps 2 to 8 and 11 of `SKILL.md` give the repository to read, give `WORKDIR`. Tell the applier to edit files only under `WORKDIR`. Run the repo's checks there.
 5. Ask once:
 
-   > Take this change to approval? I review and fix it in rounds (<MIN_URGENCY> urgency and above, up to <MAX_ROUNDS> reviews), run the repo's checks, then push to the PR's branch, fix CI failures, mark the PR ready if it is a draft, and answer reviewers. I change the code when a comment is right and reply when I disagree, in your voice, <at once | in your pending review>. I stop when the PR has an approval and is ready to merge. I never merge, force-push, amend, submit a review or resolve anyone else's thread. Tell me to stop at any time. (yes/no)
+   > Take this change to approval? I work in a temporary clone of the PR's branch, so your checkout is not touched. I review and fix it in rounds (<MIN_URGENCY> urgency and above, up to <MAX_ROUNDS> reviews), run the repo's checks, then push to the PR's branch, fix CI failures, mark the PR ready if it is a draft, and answer reviewers. I change the code when a comment is right and reply when I disagree, in your voice, <at once | in your pending review>. I stop when the PR has an approval and is ready to merge. I never merge, force-push, amend, submit a review or resolve anyone else's thread. Tell me to stop at any time. (yes/no)
 
    Do nothing more until the user says yes. That answer covers this PR for this run.
 
@@ -112,10 +115,12 @@ Record the pass: `babysit-state.sh "$MOI_DIR" set lastSeenAt=<POLLED_AT>`, where
 
 ## Finish
 
+First, whatever the reason, run `"$SKILL_DIR/scripts/workdir.sh" remove "$MOI_DIR"` when there is a clone. It deletes the clone only when that loses nothing. If it prints `KEPT`, tell the user the directory and the reason: after a failed check the changes are there, and unpushed commits too. Then:
+
 - `READY` is `true`: tell the user "PR #<number> has an approval and is ready to merge. Merge it yourself." Add the rounds, the CI fixes and the threads answered. Show the commits with `git log --oneline <baseSha>..HEAD`. Stop. Do not merge.
 - `STATE` is `MERGED` or `CLOSED`: say which, and stop.
 - The local loop stopped as `repeated`, `max-rounds`, `nothing-changed` or a failed check: say why, list the findings that remain, and stop.
 
 ## Resume
 
-Running `moi` again continues from `state.json`. Check that the tree is clean and that `lastSha` is still in the branch history. Ask the question in Start step 5 again.
+Running `moi` again continues from `state.json`. The clone from the earlier run is reused when it is still there. If it is gone, make a new one, and set `lastSha` to its head with `moi-track.sh "$MOI_DIR" commit "$(git -C "$WORKDIR" rev-parse HEAD)"`. Rounds that were never pushed are lost with the clone, so say so. Ask the question in Start step 5 again.

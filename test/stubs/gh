@@ -4,6 +4,8 @@ set -euo pipefail
 case "$1 $2" in
   "repo view")
     if [[ "$*" == *defaultBranchRef* ]]; then echo "${GH_STUB_DEFAULT:-main}"; else echo "octo/demo"; fi ;;
+  "repo clone") git clone -q "$GH_STUB_REMOTE" "$4" ;;
+  "pr checkout") git checkout -q -B "${GH_STUB_BRANCH:-feature}" "origin/${GH_STUB_BRANCH:-feature}" ;;
   "pr view")
     if [ -n "${GH_STUB_VIEW:-}" ] && [[ "$*" == *statusCheckRollup* ]]; then cat "$GH_STUB_VIEW"; exit 0; fi
     if [[ "$*" == *"--json files"* ]]; then printf '%s\n' "${GH_STUB_FILES:-}"; exit 0; fi
