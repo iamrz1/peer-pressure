@@ -23,7 +23,7 @@ dir="$1"
 shift
 min=""
 if [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = "--min-urgency" ] || usage
+  { [ "$#" -eq 2 ] && [ "$1" = "--min-urgency" ]; } || usage
   case "$2" in insist | ask | author | optional) min="$2" ;; *) usage ;; esac
 fi
 [ -r "$dir/scored.json" ] || usage

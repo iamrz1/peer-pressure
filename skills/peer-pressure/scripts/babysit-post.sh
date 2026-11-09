@@ -27,7 +27,7 @@ usage() {
   exit 2
 }
 
-[ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
+{ [ "$#" -ge 2 ] && [ "$#" -le 3 ]; } || usage
 pr="$1"
 actions="$2"
 dry_run=false
@@ -126,6 +126,7 @@ replied=0
 if [ -n "$review_id" ]; then
   while IFS= read -r t; do
     [ -n "$t" ] || continue
+    # shellcheck disable=SC2016 # GraphQL variables, not shell expansions
     args=(-f query='mutation($r: ID!, $path: String!, $body: String!, $line: Int!, $start: Int) { addPullRequestReviewThread(input: {pullRequestReviewId: $r, path: $path, body: $body, line: $line, side: RIGHT, startLine: $start, startSide: RIGHT}) { thread { id } } }'
       -f r="$review_id" -f path="$(jq -r .path <<<"$t")" -f body="$(jq -r .body <<<"$t")" -F line="$(jq -r .line <<<"$t")")
     start=$(jq -r 'if .startLine != null and .startLine != .line then .startLine else empty end' <<<"$t")
