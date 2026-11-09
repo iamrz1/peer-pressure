@@ -1,0 +1,17 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "id": "PR_node",
+        "reviews": {
+          "nodes": [
+            {
+              "id": "PRR_existing",
+              "body": "earlier body"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

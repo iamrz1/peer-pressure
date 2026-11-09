@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
 # Join scored findings with the triage decision and write the report files.
 #
-# Usage: build-report.sh <session-dir>
+# Usage: build-report.sh <session-dir> [--min-urgency insist|ask|author|optional]
 #
 # Reads scored.json and, when present, triage.json. Writes report.json (read by
 # the summary step) and synthesis.md (read by the planner and the formatter), then
 # prints a stats line. Without a usable triage.json the urgency stays empty and
-# the merge verdict falls back to "any critical finding blocks". Needs jq.
+# the merge verdict falls back to "any critical finding blocks".
+#
+# --min-urgency leaves out the findings with a lower urgency than the given one, and
+# adds ", N held back" to the stats line. A finding without an urgency is kept.
+# Needs jq.
 set -euo pipefail
 
-if [ "$#" -ne 1 ] || [ ! -r "$1/scored.json" ]; then
-  echo "usage: build-report.sh <session-dir> (needs scored.json)" >&2
+usage() {
+  echo "usage: build-report.sh <session-dir> [--min-urgency insist|ask|author|optional] (needs scored.json)" >&2
   exit 2
-fi
+}
 
+[ "$#" -ge 1 ] || usage
 dir="$1"
+shift
+min=""
+if [ "$#" -gt 0 ]; then
+  { [ "$#" -eq 2 ] && [ "$1" = "--min-urgency" ]; } || usage
+  case "$2" in insist | ask | author | optional) min="$2" ;; *) usage ;; esac
+fi
+[ -r "$dir/scored.json" ] || usage
+
 triage="$dir/triage.json"
 if [ ! -r "$triage" ]; then
   triage=$(mktemp "${TMPDIR:-/tmp}/peer-pressure-triage.XXXXXX")
@@ -27,8 +40,9 @@ elif ! jq -e 'type == "array"' "$triage" >/dev/null 2>&1; then
   echo '[]' >"$triage"
 fi
 
-jq --slurpfile t "$triage" '
+jq --slurpfile t "$triage" --arg min "$min" '
   ($t[0]) as $T
+  | ["insist", "ask", "author", "optional"] as $order
   | .findings |= map(
       . as $f
       | (($T | map(select(.id == $f.id)) | .[0]) // {}) as $u
@@ -36,6 +50,9 @@ jq --slurpfile t "$triage" '
           urgency: (if (($u.urgency // "") | IN("insist", "ask", "author", "optional")) then $u.urgency else "" end),
           reason: ($u.reason // "")
         })
+  | (.findings | length) as $before
+  | (if $min == "" then . else .findings |= map(select(. as $f | .urgency == "" or ($order | index($f.urgency)) <= ($order | index($min)))) end) as $kept
+  | $kept
   | (.findings) as $F
   | ($F | map(select(.urgency != "")) | length) as $triaged
   | ($F | map(select(.urgency == "insist")) | length) as $blocking
@@ -46,7 +63,8 @@ jq --slurpfile t "$triage" '
         warning: ($F | map(select(.label == "warning")) | length),
         suggestion: ($F | map(select(.label == "suggestion")) | length),
         insist: $blocking,
-        triaged: $triaged
+        triaged: $triaged,
+        heldBack: ($before - ($F | length))
       },
       ready: (if $triaged > 0 then $blocking == 0 else $critical == 0 end)
     }
@@ -91,4 +109,5 @@ jq -r --arg today "$(date +%Y-%m-%d)" '
     + (if ($clean | length) > 0 then "No issues from: \($clean | join(", ")).\n" else "Every lens found something to report.\n" end)
 ' "$dir/report.json" >"$dir/synthesis.md"
 
-jq -r '"\(.stats.critical) critical, \(.stats.warning) warnings, \(.stats.suggestion) suggestions, \(.stats.insist) insist"' "$dir/report.json"
+jq -r --arg min "$min" '"\(.stats.critical) critical, \(.stats.warning) warnings, \(.stats.suggestion) suggestions, \(.stats.insist) insist"
+  + (if $min != "" then ", \(.stats.heldBack) held back" else "" end)' "$dir/report.json"

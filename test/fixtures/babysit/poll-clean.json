@@ -1,0 +1,76 @@
+{
+  "data": {
+    "viewer": {
+      "login": "rezoan"
+    },
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "id": "PRRT_own",
+              "isResolved": true,
+              "path": "pkg/a.go",
+              "line": 12,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "rezoan"
+                    },
+                    "body": "Please check the error here.",
+                    "createdAt": "2026-11-09T09:00:00Z"
+                  },
+                  {
+                    "author": {
+                      "login": "carol"
+                    },
+                    "body": "Fixed, see the new commit.",
+                    "createdAt": "2026-11-09T10:00:00Z"
+                  },
+                  {
+                    "author": {
+                      "login": "rezoan"
+                    },
+                    "body": "my own later note",
+                    "createdAt": "2026-11-09T11:00:00Z"
+                  },
+                  {
+                    "author": {
+                      "login": "ci-helper[bot]"
+                    },
+                    "body": "bot chatter",
+                    "createdAt": "2026-11-09T12:00:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_done",
+              "isResolved": true,
+              "path": "pkg/a.go",
+              "line": 11,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "rezoan"
+                    },
+                    "body": "old",
+                    "createdAt": "2026-11-08T09:00:00Z"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "comments": {
+          "nodes": []
+        },
+        "reviews": {
+          "nodes": []
+        }
+      }
+    }
+  }
+}

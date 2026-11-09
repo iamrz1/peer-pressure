@@ -61,29 +61,62 @@ func TestSkillBodyIsShort(t *testing.T) {
 func TestReferencesAreLinkedBothWays(t *testing.T) {
 	doc := skillFile(t, "SKILL.md")
 
-	// Every file under references/ and scripts/ must be mentioned in SKILL.md.
+	// Every file under references/ must be mentioned in SKILL.md. A script may be
+	// mentioned by SKILL.md, by a reference, or by another script that calls it.
+	var others []string
 	err := fs.WalkDir(FS, Name, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		rel := strings.TrimPrefix(p, Name+"/")
-		if rel == "SKILL.md" {
-			return nil
-		}
-		base := rel[strings.LastIndex(rel, "/")+1:]
-		if !strings.Contains(doc, base) {
-			t.Errorf("%s is never mentioned in SKILL.md", rel)
+		if rel := strings.TrimPrefix(p, Name+"/"); rel != "SKILL.md" {
+			others = append(others, rel)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, rel := range others {
+		base := rel[strings.LastIndex(rel, "/")+1:]
+		mentioned := strings.Contains(doc, base)
+		if !mentioned && strings.HasPrefix(rel, "scripts/") {
+			for _, other := range others {
+				if other != rel && strings.Contains(skillFile(t, other), base) {
+					mentioned = true
+					break
+				}
+			}
+		}
+		if !mentioned {
+			t.Errorf("%s is never mentioned in SKILL.md", rel)
+		}
+	}
 
 	// Every references/ or scripts/ path in SKILL.md must exist.
 	for _, m := range regexp.MustCompile("(?:references|scripts)/[A-Za-z0-9_./-]+\\.(?:md|sh)").FindAllString(doc, -1) {
 		if _, err := fs.Stat(FS, Name+"/"+m); err != nil {
 			t.Errorf("SKILL.md mentions %s, which does not exist", m)
+		}
+	}
+}
+
+func TestBabysitProcedureUsesItsScripts(t *testing.T) {
+	if !strings.Contains(skillFile(t, "SKILL.md"), "references/babysit.md") {
+		t.Error("SKILL.md does not route babysit to references/babysit.md")
+	}
+	procedure := skillFile(t, "references/babysit.md")
+	scripts, err := fs.Glob(FS, Name+"/scripts/babysit-*.sh")
+	if err != nil || len(scripts) == 0 {
+		t.Fatalf("no babysit scripts found: %v", err)
+	}
+	for _, p := range scripts {
+		if base := p[strings.LastIndex(p, "/")+1:]; !strings.Contains(procedure, base) {
+			t.Errorf("references/babysit.md never uses %s", base)
+		}
+	}
+	for _, rule := range []string{"what it never does", "merge, push", "submit a review", "pending review"} {
+		if !strings.Contains(strings.ToLower(procedure), rule) {
+			t.Errorf("references/babysit.md does not state %q", rule)
 		}
 	}
 }

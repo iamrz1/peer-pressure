@@ -170,6 +170,11 @@ check "synthesis lists findings outside the drift section" 2 "$(grep -c '^### ' 
 check "synthesis carries evidence" "**Evidence:** pkg/a.go:2 discards the error from Flush." "$(grep -m1 '^\*\*Evidence' "$session/synthesis.md")"
 check "synthesis carries sources" "Sources: correctness, architecture" "$(grep -m1 '^Sources:' "$session/synthesis.md")"
 check "docs-only warnings become drift items" 1 "$(grep -c 'Sources: docs)' "$session/synthesis.md")"
+held=$("$scripts/build-report.sh" "$session" --min-urgency ask)
+check "min-urgency holds back the lower urgency findings" "1 held back" "$(sed -E 's/.*, ([0-9]+ held back)$/\1/' <<<"$held")"
+check "held back findings leave the report" "insist" "$(jq -r '.findings[0].urgency' "$session/report.json")"
+check "findings without urgency stay" 2 "$(jq '.findings | length' "$session/report.json")"
+if "$scripts/build-report.sh" "$session" --min-urgency bogus 2>/dev/null; then check "min-urgency rejects an unknown level" fail ok; else check "min-urgency rejects an unknown level" 2 "$?"; fi
 
 rm "$session/triage.json"
 "$scripts/build-report.sh" "$session" >/dev/null
@@ -330,5 +335,96 @@ echo '[{"id":"C1","verdict":"plausible","confidence":"high","title":"t","file":"
 check "plausible without an argument is dropped" "0" "$("$scripts/apply-verdicts.sh" "$ap" >/dev/null; jq length "$ap/merged.json")"
 echo 'not json' >"$ap/verdicts-1.json"
 check "an unreadable verdicts file leaves clusters unverified" "4 candidates: 0 kept, 0 nit, 0 disproved, 0 not sure enough, 0 malformed, 4 unverified" "$("$scripts/apply-verdicts.sh" "$ap" 2>/dev/null)"
+
+# babysit: state, poll, wait, delta and post
+bf="$root/test/fixtures/babysit"
+bs="$tmp/babysit"
+"$scripts/babysit-state.sh" "$bs" init 14 octo/demo
+"$scripts/babysit-state.sh" "$bs" init 99 other/x
+check "init keeps an existing state" 14 "$("$scripts/babysit-state.sh" "$bs" get pr)"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=1234567890123456789012345678901234567890 pass=3 readyNotifiedSha=null lastSeenAt=2026-11-09T09:30:00Z
+check "a long digit string stays a string" string "$(jq -r '.lastReviewedSha | type' "$bs/state.json")"
+check "a short number becomes a number" number "$(jq -r '.pass | type' "$bs/state.json")"
+check "a missing key prints nothing" "" "$("$scripts/babysit-state.sh" "$bs" get nope)"
+if "$scripts/babysit-state.sh" "$bs" set oops 2>/dev/null; then check "set needs key=value" fail ok; else check "set needs key=value" 2 "$?"; fi
+
+export GH_STUB_VIEW="$bf/view-open.json"
+export GH_STUB_THREADS="$bf/poll-open-thread.json"
+pv() { "$scripts/babysit-poll.sh" 14 "$bs" | sed -n "s/^$1=//p"; }
+check "a new head asks for a review" review "$(pv ACTION)"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=abc123
+check "a reply on our thread asks for a response" respond "$(pv ACTION)"
+check "only a human reply on our thread counts" "1" "$(pv NEW_REPLIES)"
+check "a comment on the PR counts, our own and bots do not" "1" "$(pv NEW_COMMENTS)"
+check "the viewer is found" rezoan "$(pv VIEWER)"
+check "unresolved threads are counted" "1 1" "$(pv OPEN_THREADS) $(pv OPEN_OWN_THREADS)"
+check "an open thread blocks ready" false "$(pv READY)"
+"$scripts/babysit-state.sh" "$bs" set lastSeenAt=2026-11-09T14:00:00Z
+check "nothing new is idle" idle "$(pv ACTION)"
+check "poll.json lists the new replies" 0 "$(jq '.newReplies | length' "$bs/poll.json")"
+export GH_STUB_THREADS="$bf/poll-clean.json"
+check "all threads resolved, CI passing and reviewed is ready" "true true" "$(pv READY) $(pv READY_NOTICE)"
+"$scripts/babysit-state.sh" "$bs" set readyNotifiedSha=abc123
+check "ready is announced once per head" "true false" "$(pv READY) $(pv READY_NOTICE)"
+export GH_STUB_VIEW="$bf/view-failing.json"
+check "failing CI is not ready" "failing false" "$(pv CI) $(pv READY)"
+export GH_STUB_VIEW="$bf/view-pending.json"
+check "running CI is pending" pending "$(pv CI)"
+export GH_STUB_VIEW="$bf/view-merged.json"
+check "a merged PR is done" "MERGED done" "$(pv STATE) $(pv ACTION)"
+export GH_STUB_VIEW="$bf/view-open.json"
+
+wo=$("$scripts/babysit-wait.sh" 14 "$bs" --interval 0 --max 0)
+check "wait gives up after the maximum" WAIT=timeout "$(tail -1 <<<"$wo")"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=old111
+wo=$("$scripts/babysit-wait.sh" 14 "$bs" --interval 0 --max 0)
+check "wait returns when the head moves" WAIT=changed "$(tail -1 <<<"$wo")"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=abc123
+if "$scripts/babysit-wait.sh" 14 "$bs" --interval x 2>/dev/null; then check "wait rejects a bad interval" fail ok; else check "wait rejects a bad interval" 2 "$?"; fi
+
+dl="$tmp/delta"
+mkdir -p "$dl"
+export GH_STUB_THREADS="$root/test/fixtures/graphql-threads.json"
+export GH_STUB_FILES="pkg/a.go"
+export GH_STUB_COMPARE="$bf/compare.diff"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=null
+check "the first pass reviews the whole PR" "full first-pass" "$("$scripts/babysit-delta.sh" 14 "$bs" "$dl" | sed -nE 's/^(DELTA|REASON)=//p' | paste -sd' ' -)"
+check "the first pass keeps the whole diff" "$(wc -c <"$GH_STUB_DIFF" | tr -d ' ')" "$(wc -c <"$dl/input.txt" | tr -d ' ')"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=old111
+check "later passes review the delta" "incremental old111" "$("$scripts/babysit-delta.sh" 14 "$bs" "$dl" | sed -nE 's/^(DELTA|FROM_SHA)=//p' | paste -sd' ' -)"
+check "the delta keeps the PR's own files" "1" "$(grep -c '^diff --git' "$dl/input.txt")"
+check "the delta drops files the PR does not change" "0" "$(grep -c 'vendor/base.go' "$dl/input.txt")"
+check "the whole diff is kept as full.txt" "pkg/a.go" "$(sed -n 's/^diff --git a\/\(.*\) b\/.*/\1/p' "$dl/full.txt" | head -1)"
+export GH_STUB_COMPARE="$bf/compare-base-only.diff"
+check "a delta of base changes only is nothing to review" "none base-only" "$("$scripts/babysit-delta.sh" 14 "$bs" "$dl" | sed -nE 's/^(DELTA|REASON)=//p' | paste -sd' ' -)"
+check "input is empty then" "0" "$(wc -c <"$dl/input.txt" | tr -d ' ')"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=abc123
+check "an unmoved head is nothing to review" "none unchanged" "$("$scripts/babysit-delta.sh" 14 "$bs" "$dl" | sed -nE 's/^(DELTA|REASON)=//p' | paste -sd' ' -)"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=old111
+export GH_STUB_COMPARE_FAIL=1
+check "a failed compare falls back to the whole PR" "full force-pushed" "$("$scripts/babysit-delta.sh" 14 "$bs" "$dl" | sed -nE 's/^(DELTA|REASON)=//p' | paste -sd' ' -)"
+unset GH_STUB_COMPARE_FAIL GH_STUB_COMPARE GH_STUB_FILES
+
+: >"$GH_STUB_LOG"
+export GH_STUB_THREADS="$bf/post-lookup.json"
+dry=$("$scripts/babysit-post.sh" 14 "$bf/actions.json" --dry-run)
+check "dry run counts the actions" "PR octo/demo#14: 1 inline threads, 1 in the review body, 1 replies, 1 to resolve" "$(head -1 <<<"$dry")"
+check "dry run changes nothing" 0 "$(grep -c mutation "$GH_STUB_LOG" || true)"
+"$scripts/babysit-post.sh" 14 "$bf/actions.json" >"$tmp/bpost.out"
+check "a missing pending review is created" 1 "$(grep -c addPullRequestReview\( "$GH_STUB_LOG" || true)"
+check "inline threads, replies, resolves and the body are sent" "1 1 1 1" "$(for m in addPullRequestReviewThread\( addPullRequestReviewThreadReply resolveReviewThread updatePullRequestReview; do grep -c "$m" "$GH_STUB_LOG" || true; done | paste -sd' ' -)"
+check "the result is reported" "PRR_new 1 1 1 1 0" "$(sed -n 's/^PENDING_REVIEW=//p;s/^THREADS_ADDED=//p;s/^REPLIES_ADDED=//p;s/^LOOSE=//p;s/^RESOLVED=//p;s/^FAILED=//p' "$tmp/bpost.out" | paste -sd' ' -)"
+: >"$GH_STUB_LOG"
+export GH_STUB_THREADS="$bf/post-lookup-pending.json"
+"$scripts/babysit-post.sh" 14 "$bf/actions.json" >"$tmp/bpost.out"
+check "an existing pending review is extended, not created" "0" "$(grep -c addPullRequestReview\( "$GH_STUB_LOG" || true)"
+check "the existing review id is used" "PRR_existing" "$(sed -n 's/^PENDING_REVIEW=//p' "$tmp/bpost.out")"
+check "the loose thread joins the earlier body" 1 "$(grep -c 'earlier body' "$GH_STUB_LOG" || true)"
+check "no review is ever submitted" 0 "$(grep -ci 'submitPullRequestReview\|event' "$GH_STUB_LOG" || true)"
+check "the script has no submit call" 0 "$(grep -ci 'submitPullRequestReview' "$scripts/babysit-post.sh" || true)"
+echo '{}' >"$tmp/empty-actions.json"
+check "no actions do nothing" "0" "$("$scripts/babysit-post.sh" 14 "$tmp/empty-actions.json" | sed -n 's/^THREADS_ADDED=//p')"
+unset GH_STUB_VIEW
+export GH_STUB_THREADS="$root/test/fixtures/graphql-threads.json"
 
 exit "$fail"
