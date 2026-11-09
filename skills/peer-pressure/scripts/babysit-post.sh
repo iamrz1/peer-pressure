@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Add findings and replies to the viewer's pending review, and resolve threads.
 #
-# Usage: babysit-post.sh <pr-number> <actions.json> [--dry-run]
+# Usage: babysit-post.sh <pr-number> <actions.json> [--dry-run] [--replies-now]
 #
 # actions.json:
 #   {"summary": "...",
@@ -16,6 +16,10 @@
 # the review body instead, because GitHub rejects a comment outside the diff.
 # Resolving a thread takes effect at once, as GitHub has no pending state for it.
 #
+# With --replies-now the replies are posted at once as ordinary comments through the
+# REST reply endpoint, and are not put into the pending review. Without it nothing
+# a reply says is visible to others until the user submits the review.
+#
 # This script never submits a review. It only calls the mutations listed in the
 # `gql` calls below. Prints PENDING_REVIEW, THREADS_ADDED, REPLIES_ADDED, LOOSE,
 # RESOLVED and FAILED as key=value lines, and exits 1 when FAILED is above 0.
@@ -23,19 +27,23 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: babysit-post.sh <pr-number> <actions.json> [--dry-run]" >&2
+  echo "usage: babysit-post.sh <pr-number> <actions.json> [--dry-run] [--replies-now]" >&2
   exit 2
 }
 
-{ [ "$#" -ge 2 ] && [ "$#" -le 3 ]; } || usage
+[ "$#" -ge 2 ] || usage
 pr="$1"
 actions="$2"
+shift 2
 dry_run=false
-if [ "${3:-}" = "--dry-run" ]; then
-  dry_run=true
-elif [ -n "${3:-}" ]; then
-  usage
-fi
+replies_now=false
+for opt in "$@"; do
+  case "$opt" in
+    --dry-run) dry_run=true ;;
+    --replies-now) replies_now=true ;;
+    *) usage ;;
+  esac
+done
 case "$pr" in '' | *[!0-9]*) echo "babysit-post.sh: PR number must be digits, got: $pr" >&2; exit 2 ;; esac
 jq -e 'type == "object"' "$actions" >/dev/null 2>&1 ||
   { echo "babysit-post.sh: $actions is not a JSON object" >&2; exit 2; }
@@ -112,7 +120,9 @@ gql() {
   fi
 }
 
-if [ $((n_threads + n_replies)) -gt 0 ] && [ -z "$review_id" ]; then
+need_review=$n_threads
+[ "$replies_now" = true ] || need_review=$((n_threads + n_replies))
+if [ "$need_review" -gt 0 ] && [ -z "$review_id" ]; then
   # shellcheck disable=SC2016
   if out=$(gql "create review" -f query='mutation($pr: ID!) { addPullRequestReview(input: {pullRequestId: $pr}) { pullRequestReview { id } } }' -f pr="$pr_id"); then
     review_id=$(jq -r '.data.addPullRequestReview.pullRequestReview.id' <<<"$out")
@@ -134,19 +144,38 @@ if [ -n "$review_id" ]; then
     if gql "add thread" "${args[@]}" >/dev/null; then added=$((added + 1)); else failed=$((failed + 1)); fi
   done < <(jq -c '.[]' <<<"$anchored")
 
-  while IFS= read -r r; do
-    [ -n "$r" ] || continue
-    # shellcheck disable=SC2016
-    if gql "reply" -f query='mutation($r: ID!, $t: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewId: $r, pullRequestReviewThreadId: $t, body: $body}) { comment { id } } }' \
-      -f r="$review_id" -f t="$(jq -r .threadId <<<"$r")" -f body="$(jq -r .body <<<"$r")" >/dev/null; then replied=$((replied + 1)); else failed=$((failed + 1)); fi
-  done < <(jq -c '.[]' <<<"$replies")
-
   if [ -n "$new_body" ] && [ "$new_body" != "$review_body" ]; then
     # shellcheck disable=SC2016
     gql "update review body" -f query='mutation($r: ID!, $body: String!) { updatePullRequestReview(input: {pullRequestReviewId: $r, body: $body}) { pullRequestReview { id } } }' \
       -f r="$review_id" -f body="$new_body" >/dev/null || failed=$((failed + 1))
   fi
 fi
+
+# reply_now <thread-id> <body>: a reply that is visible at once. The REST endpoint
+# replies to the root comment of the thread, so that comment's id is looked up first.
+reply_now() {
+  local cid
+  # shellcheck disable=SC2016
+  cid=$(gql "find thread" -f query='query($t: ID!) { node(id: $t) { ... on PullRequestReviewThread { comments(first: 1) { nodes { fullDatabaseId } } } } }' -f t="$1" |
+    jq -r '.data.node.comments.nodes[0].fullDatabaseId // empty') || return 1
+  [ -n "$cid" ] || { echo "babysit-post.sh: thread $1 not found" >&2; return 1; }
+  jq -n --arg b "$2" '{body: $b}' | gh api --method POST "repos/$owner_repo/pulls/$pr/comments/$cid/replies" --input - >/dev/null
+}
+
+while IFS= read -r r; do
+  [ -n "$r" ] || continue
+  tid=$(jq -r .threadId <<<"$r")
+  body=$(jq -r .body <<<"$r")
+  if [ "$replies_now" = true ]; then
+    if reply_now "$tid" "$body"; then replied=$((replied + 1)); else failed=$((failed + 1)); fi
+  elif [ -n "$review_id" ]; then
+    # shellcheck disable=SC2016
+    if gql "reply" -f query='mutation($r: ID!, $t: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewId: $r, pullRequestReviewThreadId: $t, body: $body}) { comment { id } } }' \
+      -f r="$review_id" -f t="$tid" -f body="$body" >/dev/null; then replied=$((replied + 1)); else failed=$((failed + 1)); fi
+  else
+    failed=$((failed + 1))
+  fi
+done < <(jq -c '.[]' <<<"$replies")
 
 resolved=0
 while IFS= read -r id; do

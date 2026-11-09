@@ -427,4 +427,84 @@ check "no actions do nothing" "0" "$("$scripts/babysit-post.sh" 14 "$tmp/empty-a
 unset GH_STUB_VIEW
 export GH_STUB_THREADS="$root/test/fixtures/graphql-threads.json"
 
+# babysit as the author: respond, fix-ci and ready
+au="$tmp/author"
+"$scripts/babysit-state.sh" "$au" init 14 octo/demo
+"$scripts/babysit-state.sh" "$au" set lastSeenAt=2026-11-09T09:15:00Z
+export GH_STUB_VIEW="$bf/view-author.json"
+export GH_STUB_THREADS="$bf/poll-author.json"
+ap() { "$scripts/babysit-poll.sh" 14 "$au" --as author | sed -n "s/^$1=//p"; }
+check "the author is told about a reviewer's new comment" respond "$(ap ACTION)"
+check "author mode counts comments on any open thread" 1 "$(ap NEW_REPLIES)"
+check "a thread whose last comment is not ours waits on us" 1 "$(ap WAITING_ON_AUTHOR)"
+check "the latest verdict of each reviewer counts" "0 1" "$(ap APPROVALS) $(ap CHANGES_REQUESTED)"
+check "a change request blocks ready" false "$(ap READY)"
+"$scripts/babysit-state.sh" "$au" set lastSeenAt=2026-11-09T11:30:00Z
+check "nothing new is idle in author mode" idle "$(ap ACTION)"
+check "the head moving is not a review in author mode" idle "$(ap ACTION)"
+export GH_STUB_VIEW="$bf/view-author-failing.json"
+check "failing CI is a job for the author" fix-ci "$(ap ACTION)"
+"$scripts/babysit-state.sh" "$au" set ciHandledSha=abc123
+check "a failure that was handled is not offered again" idle "$(ap ACTION)"
+export GH_STUB_VIEW="$bf/view-author.json"
+export GH_STUB_THREADS="$bf/poll-author-ready.json"
+check "approved, passing and answered is ready" "true 1 0 0" "$(ap READY) $(ap APPROVALS) $(ap CHANGES_REQUESTED) $(ap WAITING_ON_AUTHOR)"
+export GH_STUB_VIEW="$bf/view-author-draft.json"
+check "a draft is not ready" false "$(ap READY)"
+export GH_STUB_VIEW="$bf/view-author.json"
+"$scripts/babysit-state.sh" "$au" set lastSeenAt=2026-11-09T13:00:00Z
+check "once seen, the approval is not new activity" idle "$(ap ACTION)"
+wo=$("$scripts/babysit-wait.sh" 14 "$au" --interval 0 --max 0 --as author)
+check "wait in author mode stops on ready" "WAIT=changed" "$(tail -1 <<<"$wo")"
+"$scripts/babysit-state.sh" "$au" set readyNotifiedSha=abc123
+wo=$("$scripts/babysit-wait.sh" 14 "$au" --interval 0 --max 0 --as author)
+check "wait in author mode times out when nothing changes" "WAIT=timeout" "$(tail -1 <<<"$wo")"
+if "$scripts/babysit-poll.sh" 14 "$au" --as reviewer 2>/dev/null; then check "poll rejects an unknown role" fail ok; else check "poll rejects an unknown role" 2 "$?"; fi
+
+: >"$GH_STUB_LOG"
+export GH_STUB_THREADS="$bf/post-lookup-node.json"
+"$scripts/babysit-post.sh" 14 "$bf/replies.json" --replies-now >"$tmp/now.out"
+check "a direct reply goes to the root comment of the thread" 1 "$(grep -c 'pulls/14/comments/4242/replies' "$GH_STUB_LOG" || true)"
+check "a direct reply does not create a pending review" 0 "$(grep -c 'addPullRequestReview' "$GH_STUB_LOG" || true)"
+check "the direct reply is counted" "REPLIES_ADDED=1" "$(grep '^REPLIES_ADDED' "$tmp/now.out")"
+"$scripts/babysit-post.sh" 14 "$bf/replies.json" >"$tmp/later.out"
+check "without the flag the reply goes into the pending review" 1 "$(grep -c 'addPullRequestReviewThreadReply' "$GH_STUB_LOG" || true)"
+if "$scripts/babysit-post.sh" 14 "$bf/replies.json" --now 2>/dev/null; then check "post rejects an unknown option" fail ok; else check "post rejects an unknown option" 2 "$?"; fi
+unset GH_STUB_VIEW
+export GH_STUB_THREADS="$root/test/fixtures/graphql-threads.json"
+
+# moi: tracking rounds and the stop decision
+mt="$tmp/moi"
+rep() { jq -n --argjson f "$1" '{findings: $f}' >"$tmp/moi-report.json"; }
+mr() { "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" "$@" | paste -sd' ' -; }
+"$scripts/moi-track.sh" "$mt" init abc111
+"$scripts/moi-track.sh" "$mt" init zzz999
+check "moi init keeps an existing state" abc111 "$("$scripts/moi-track.sh" "$mt" get baseSha)"
+"$scripts/moi-track.sh" "$tmp/moi2" init abc111 octo/demo
+check "moi init stores what the author poll reads" "octo/demo" "$("$scripts/moi-track.sh" "$tmp/moi2" get ownerRepo)"
+check "moi init sets lastSeenAt" 1 "$(jq 'has("lastSeenAt") and (.lastSeenAt | type == "string") | if . then 1 else 0 end' "$tmp/moi2/state.json")"
+"$scripts/babysit-state.sh" "$tmp/moi2" set ciHandledSha=def456 pr=14
+check "babysit-state sets values in a moi state" "def456 14 abc111" "$("$scripts/moi-track.sh" "$tmp/moi2" get ciHandledSha) $("$scripts/moi-track.sh" "$tmp/moi2" get pr) $("$scripts/moi-track.sh" "$tmp/moi2" get baseSha)"
+rep '[{"file":"a.go","title":"Error dropped on Flush"},{"file":"b.go","title":"Missing doc"}]'
+check "round 1 reports new findings and goes on" "ROUND=1 TOTAL=1 FINDINGS=2 NEW=2 REPEATED=0 STOP=" "$(mr)"
+check "prior findings are written for the next round" 2 "$(grep -c '^- round 1' "$mt/prior-findings.md")"
+"$scripts/moi-track.sh" "$mt" commit def222
+check "the round commit is stored" def222 "$("$scripts/moi-track.sh" "$mt" get lastSha)"
+rep '[{"file":"a.go","title":"error dropped on flush!"}]'
+check "the same finding in other words and case is a repeat" "ROUND=2 TOTAL=2 FINDINGS=1 NEW=0 REPEATED=1 STOP=repeated" "$(mr)"
+rep '[{"file":"c.go","title":"New problem"}]'
+check "a new finding goes on" "ROUND=3 TOTAL=3 FINDINGS=1 NEW=1 REPEATED=0 STOP=" "$(mr)"
+check "the cap stops with findings left" "ROUND=4 TOTAL=4 FINDINGS=1 NEW=1 REPEATED=0 STOP=max-rounds" "$(rep '[{"file":"d.go","title":"Another"}]'; mr --max 4)"
+rep '[]'
+check "no findings is converged" "ROUND=5 TOTAL=5 FINDINGS=0 NEW=0 REPEATED=0 STOP=converged" "$(mr)"
+check "converged wins over the cap" "STOP=converged" "$(mr --max 1 | sed -E 's/.*(STOP=.*)/\1/')"
+check "the earlier findings stay on record" 4 "$(jq '.seen | length' "$mt/state.json")"
+"$scripts/moi-track.sh" "$mt" cycle
+check "a new cycle restarts the round count and keeps the total" "0 6" "$(jq -r '"\(.rounds) \(.total)"' "$mt/state.json")"
+rep '[{"file":"a.go","title":"Error dropped on Flush"}]'
+check "a finding fixed in an earlier cycle is still a repeat" "ROUND=1 TOTAL=7 FINDINGS=1 NEW=0 REPEATED=1 STOP=repeated" "$(mr)"
+echo '{"nope":1}' >"$tmp/moi-report.json"
+if "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" 2>/dev/null; then check "a report without findings is rejected" fail ok; else check "a report without findings is rejected" 2 "$?"; fi
+if "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" --max 0 2>/dev/null; then check "a zero cap is rejected" fail ok; else check "a zero cap is rejected" 2 "$?"; fi
+
 exit "$fail"

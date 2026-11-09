@@ -1,0 +1,121 @@
+# Moi
+
+`moi` takes your own change to approval. It reviews and fixes the change in rounds, pushes it, fixes CI failures, marks a draft PR ready, then waits for reviewers and answers them. It is done when the PR has an approval and is ready to merge. `toi` is its counterpart for someone else's PR (see `babysit.md`).
+
+`SKILL_DIR` is as in `SKILL.md`. You do the reviewing, the fixing, the committing and the writing. `moi-track.sh` keeps the record of the rounds and decides when a local loop stops. `babysit-poll.sh`, `babysit-wait.sh` and `babysit-post.sh` do the checking, the waiting and the replying.
+
+## What it never does
+
+- Force-push or amend, or rewrite a commit that is already pushed.
+- Merge the PR, or submit a review.
+- Resolve a thread that someone else started. That is the reviewer's call.
+- Push to any branch except the PR's own, or touch commits that were there before the run.
+- Throw work away. If something fails it stops and leaves the changes in the working tree.
+- Mark the PR ready, or say it is done, while the local loop has findings it could not clear.
+- Work on files that are not under git. Files mode is not supported. Use a branch.
+
+## Start
+
+1. Parse the request: `moi [<number>]` with optional `--min-urgency insist|ask|author|optional` (default `ask`), `--max-rounds N` (default 5), `--interval SECONDS` (default 60) and `--pending-replies`. Keep the values as `MIN_URGENCY`, `MAX_ROUNDS`, `INTERVAL` and `PENDING_REPLIES`. A round applies only findings at that urgency or above, so it never chases nitpicks. By default replies to reviewers are posted at once. With `--pending-replies` they go into the user's pending review, and the user submits it.
+2. With a number, the PR must be the branch that is checked out. Compare `gh pr view <number> --json headRefName --jq .headRefName` with `git branch --show-current`. If they differ, tell the user to run `gh pr checkout <number>` and stop. Without a number, use the PR of the current branch (`gh pr view --json number --jq .number`). If there is none, the target is the branch against its base, and `moi` runs only the **Local loop**. Say that you did not push, and that the user should open a PR and run `moi` again to continue.
+3. The working tree must be clean: `git status --porcelain` prints nothing. Each round is committed with `git add -A`, so unrelated changes would end up in it. If the tree is dirty, say so and stop.
+4. Set `MOI_DIR="$REPO_ROOT/.peer-pressure/moi-<label>"`, where `<label>` is `pr-<number>` or the branch name with `/` replaced by `-`. Run `"$SKILL_DIR/scripts/moi-track.sh" "$MOI_DIR" init "$(git rev-parse HEAD)" <owner/repo>`, and with a PR also `"$SKILL_DIR/scripts/babysit-state.sh" "$MOI_DIR" set pr=<number>`. If a state already existed, tell the user you are resuming and from which round.
+5. Ask once:
+
+   > Take this change to approval? I review and fix it in rounds (<MIN_URGENCY> urgency and above, up to <MAX_ROUNDS> reviews), run the repo's checks, then push to the PR's branch, fix CI failures, mark the PR ready if it is a draft, and answer reviewers. I change the code when a comment is right and reply when I disagree, in your voice, <at once | in your pending review>. I stop when the PR has an approval and is ready to merge. I never merge, force-push, amend, submit a review or resolve anyone else's thread. Tell me to stop at any time. (yes/no)
+
+   Do nothing more until the user says yes. That answer covers this PR for this run.
+
+If the user has a writing-style skill, load it before you draft any reply.
+
+## Local loop
+
+Repeat rounds until a round tells you to stop. `<n>` is one more than the `total` value of the state, so every round of the run has its own directory.
+
+1. `SESSION_DIR="$MOI_DIR/round-<n>"`. Prepare the input:
+   - The first round of a run (`total` is 0): the whole change, as in Step 2 of `SKILL.md` (a PR with `pr-context.sh`, a branch with `find-base.sh`).
+   - Later rounds, and the first round of a later cycle: only what the last commits changed. Run `git diff "$(moi-track.sh "$MOI_DIR" get lastSha)" HEAD > "$SESSION_DIR/input.txt"`. If it is empty, stop as `nothing-changed`.
+2. Review with Steps 3 to 8 of `SKILL.md`, with these differences:
+   - When `prior-findings.md` exists in `$MOI_DIR`, set `PRIOR_PREAMBLE` to the prompt that points at it, and add: "This is the change made to fix earlier findings or reviewer comments. Review only this change. Look for problems the changes introduced and for fixes that are incomplete."
+   - In Step 8, run `build-report.sh "$SESSION_DIR" --min-urgency "$MIN_URGENCY"`. Keep the held back count.
+3. Record it: `"$SKILL_DIR/scripts/moi-track.sh" "$MOI_DIR" round "$SESSION_DIR/report.json" --max "$MAX_ROUNDS"`. Read `STOP`:
+   - `converged`: no findings. The loop is done.
+   - `repeated`: a finding that an earlier round fixed has come back. The loop is not converging. Stop and show which.
+   - `max-rounds`: the last allowed review still has findings. Do not apply them. Stop.
+   - empty: apply them.
+4. Apply with Step 11 of `SKILL.md`, items 2 to 6. Skip item 1, since you are on the branch. If the applier cannot apply a finding, note it. Do not retry it.
+5. Check the result. Find the repo's own test and lint commands (the agent instructions, a `Makefile` or task runner, the package manifest, the CI config) and run the quick ones. If there are none, say so once and go on. If a check fails, try once to fix that failure. If it still fails, stop: leave the changes uncommitted in the working tree and tell the user what failed. Do not push.
+6. Commit: `git add -A`, then `git commit -m "fix: address review findings (round <n>)"`. Then run `"$SKILL_DIR/scripts/moi-track.sh" "$MOI_DIR" commit "$(git rev-parse HEAD)"`.
+7. Say one line: the round, how many findings, how many applied, how many held back, the checks, the short commit sha.
+
+The loop ends as `converged`, `repeated`, `max-rounds`, `nothing-changed` or a failed check. Without a PR, say why it stopped and show `git log --oneline <baseSha>..HEAD`. Do not push. Stop.
+
+## Push
+
+With a PR, and when the loop did not fail a check: if there are commits that are not on the remote, run `git push` (`git push -u origin <branch>` when the branch has no upstream). If the push is rejected because the remote has new commits, run `git pull --rebase`, run the checks again and push again. If the rebase conflicts, stop and tell the user. Never force. If the loop stopped as `repeated` or `max-rounds`, push what was fixed, say which findings remain, and stop after this phase. Do not mark the PR ready.
+
+## CI
+
+Poll: `"$SKILL_DIR/scripts/babysit-poll.sh" <number> "$MOI_DIR" --as author`. Read `CI`.
+
+- `pending`: wait with `babysit-wait.sh <number> "$MOI_DIR" --interval 30 --max 300 --as author` and poll again.
+- `passing` or `none`: go on to **Ready**.
+- `failing` (`ACTION=fix-ci`): find the failed jobs with `gh pr checks <number>`, and read each failed log with `gh run view <run-id> --log-failed`. Decide from the log:
+  - The change caused it: fix it, run the checks, commit `fix: <what>`, push, and poll again.
+  - It looks like a flaky test or infrastructure (a network error, a runner failure, a timeout in code the change does not touch): rerun it once with `gh run rerun <run-id> --failed`.
+  - Count the attempts in the state (`babysit-state.sh "$MOI_DIR" set ciAttempts=<n>`). After three heads in a row that fail, or a failure you cannot explain, run `babysit-state.sh "$MOI_DIR" set ciHandledSha=<HEAD_SHA>`, tell the user, and go on to the **Wait** phase. The PR cannot become ready until the user deals with it.
+
+## Ready
+
+If `DRAFT` is `true` and the local loop was `converged`, run `gh pr ready <number>`. If the PR was not a draft, do nothing.
+
+## Wait and answer reviewers
+
+Repeat until `READY` is `true`, `STATE` is not `OPEN`, or the user says stop.
+
+1. Poll with `--as author`. Follow `ACTION`:
+   - `done`: go to **Finish**.
+   - `fix-ci`: do the failing branch of **CI**.
+   - `respond`: do a **Respond pass**.
+   - `idle`: wait.
+2. If `READY` is `true`, go to **Finish**.
+3. Wait: run `"$SKILL_DIR/scripts/babysit-wait.sh" <number> "$MOI_DIR" --interval <INTERVAL> --as author`, then go back to step 1. It returns when something changed, after 30 minutes, or after five failed polls (`WAIT=error`: tell the user and keep trying every few minutes).
+   - If you can run a command in the background, run it there, so you are called again when it exits. Do not poll its output.
+   - If you cannot, run it in the foreground with `--max` below the host's command time limit.
+   - If you cannot wait at all, say the run is not continuous here and stop.
+
+Notify the user with the host's notification tool when there is one, and always print the line in the terminal. Notify when: you pushed, a reviewer's comment needs the user's decision, CI could not be fixed, a pass failed, and the run ended.
+
+### Respond pass
+
+Read `waitingThreads` and `newComments` in `poll.json`. Decide for each thread from the code, not from how sure the reviewer sounds:
+
+- **The comment is right.** Change the code. Reply in one short line that names the commit.
+- **It is unclear.** Ask one question in a reply.
+- **You disagree.** Reply once with the reason and the evidence, then hand it back with a question. After two of your replies in a thread and still no agreement, do not reply again. Tell the user the thread needs a decision.
+- **It is a question you can answer from the code.** Answer it in one or two sentences.
+- **It asks for something large or outside this PR.** Do not act. Tell the user.
+
+Top-level comments and review summaries from others: read them, and act on a request in them the same way. Do not resolve any thread.
+
+If you changed code: run the **Local loop** on that change (first `moi-track.sh "$MOI_DIR" cycle`, so the round count starts again and the findings already seen are kept), then push, as in **Push**. Reply only after the push, so that the commit you name is on the remote.
+
+Write `<SESSION_DIR>/actions.json` with the replies as `babysit-post.sh` describes, with `SESSION_DIR="$MOI_DIR/respond-<k>"`, and post it:
+
+```bash
+"$SKILL_DIR/scripts/babysit-post.sh" <number> "$SESSION_DIR/actions.json" --replies-now
+```
+
+Leave out `--replies-now` when `PENDING_REPLIES` is set. Replies are short and plain, in the user's voice. Do not thank, apologise or summarize. If it exits 1, show `FAILED` and the error.
+
+Record the pass: `babysit-state.sh "$MOI_DIR" set lastSeenAt=<POLLED_AT>`, where `POLLED_AT` is from the poll that started the pass. Say one line: how many threads were answered, whether code changed, the pushed commit.
+
+## Finish
+
+- `READY` is `true`: tell the user "PR #<number> has an approval and is ready to merge. Merge it yourself." Add the rounds, the CI fixes and the threads answered. Show the commits with `git log --oneline <baseSha>..HEAD`. Stop. Do not merge.
+- `STATE` is `MERGED` or `CLOSED`: say which, and stop.
+- The local loop stopped as `repeated`, `max-rounds`, `nothing-changed` or a failed check: say why, list the findings that remain, and stop.
+
+## Resume
+
+Running `moi` again continues from `state.json`. Check that the tree is clean and that `lastSha` is still in the branch history. Ask the question in Start step 5 again.

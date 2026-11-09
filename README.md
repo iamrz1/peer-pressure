@@ -57,14 +57,19 @@ In an agent with slash commands:
 /peer-pressure --width 120 123  table width in characters (default 140)
 /peer-pressure --base feat/a    review against this ref (branch mode, for a stacked branch)
 /peer-pressure --stack 123      review the whole stack that PR 123 is in (--single: only that PR)
-/peer-pressure babysit 123      keep reviewing PR 123 until it is merged or closed
+/peer-pressure babysit 123      keep reviewing PR 123 until it is merged or closed (alias: toi)
+/peer-pressure moi              take your own PR to approval: review, fix, push, fix CI, answer reviewers
 ```
 
 If PR 123 is part of a stack of PRs, you are asked whether to review only that PR or the whole stack. A whole-stack review runs the pipeline once on the combined diff, so problems between PRs are found. Each finding is then given to the PR that added the line, marked `#<number>` in the table, and posted as a pending review on that PR only.
 
 Elsewhere, ask in plain words: "Use the peer-pressure skill to review PR 123."
 
-### Babysit
+### Toi and moi
+
+`toi` (you) is for someone else's PR and `moi` (me) is for your own. Say yes once and each runs without asking again.
+
+### Babysit, also `toi`
 
 `babysit 123` follows someone else's PR to the end. You say yes once, then it runs on its own until the PR is merged or closed, you tell it to stop, or you close the terminal. Running it again resumes from where it stopped.
 
@@ -75,6 +80,23 @@ Elsewhere, ask in plain words: "Use the peer-pressure skill to review PR 123."
 - It tells you when it adds something, when a thread needs you, and when the PR looks ready to merge. That notice comes once per head and does not end the run.
 
 The state of a run is in `.peer-pressure/babysit-pr-<number>/state.json`. See `references/babysit.md` for the procedure.
+
+### Moi
+
+`moi` takes your own change to approval.
+
+1. It reviews the change, applies the findings at `ask` urgency or above, runs the repo's own checks, commits the round, and reviews only what the fixes changed. It stops when a review finds nothing new, when a fixed finding comes back, or after `--max-rounds` reviews (default 5).
+2. It pushes to the PR's branch, looks at CI, and fixes a failure that the change caused. A flaky job is rerun once.
+3. It marks a draft PR ready.
+4. It waits for reviewers. When a comment is right it changes the code and reviews that change the same way. It replies in your voice, at once, or into your pending review with `--pending-replies`.
+
+It is done when the PR has an approval and is ready to merge: no change request, CI passing, no conflicts, and no thread waiting on you. It does not merge.
+
+- It never force-pushes, amends, merges, submits a review, or resolves someone else's thread.
+- The working tree must be clean when it starts, so each round holds only its own fixes.
+- Without a PR it runs only the local loop and does not push.
+
+The state of a run is in `.peer-pressure/moi-<label>/state.json`. See `references/moi.md`.
 
 PR mode needs the [GitHub CLI](https://cli.github.com/) (`gh`, logged in) and `jq`. Branch and files modes need only `git`.
 
@@ -106,6 +128,7 @@ On a PR that already has review threads, reviewers skip points that are already 
 - The review is shown before anything else happens.
 - Posted reviews stay **pending**. You submit them in GitHub. The posting scripts never call a submit endpoint.
 - Babysit acts without asking after the first yes, but only on that PR, and only by adding to your pending review, replying and resolving threads.
+- Moi acts without asking after the first yes: edits and commits on your checked-out branch, pushes to the PR's own branch, reruns CI jobs, marks a draft ready, and replies to reviewers. It never force-pushes, merges or submits a review.
 - Comments on lines outside the diff go into the review body, because GitHub rejects the whole review otherwise.
 - Review files live in `.peer-pressure/` in the repo and are excluded through `.git/info/exclude`. Your `.gitignore` is not touched.
 - Do not review changes that contain personal data, health data or secrets with a tool you have not cleared for that. The review text is sent to your agent's model provider, and posted comments go to GitHub.
@@ -118,8 +141,9 @@ skills/peer-pressure/
   references/perspectives/    one checklist per perspective
   references/bar.md           the review bar every reviewer and the verifier applies
   references/pipeline/        reviewer, verifier, urgency, quick-reviewer, summary, planner, applier, formatter
-  references/babysit.md       the babysit procedure
-  scripts/                    route-diff.sh, split-diff.sh, cluster-findings.sh, apply-verdicts.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, diff-lines.sh, post-pending-review.sh, babysit-state.sh, babysit-poll.sh, babysit-wait.sh, babysit-delta.sh, babysit-post.sh
+  references/babysit.md       the babysit (toi) procedure
+  references/moi.md           the moi procedure
+  scripts/                    route-diff.sh, split-diff.sh, cluster-findings.sh, apply-verdicts.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, diff-lines.sh, post-pending-review.sh, babysit-state.sh, babysit-poll.sh, babysit-wait.sh, babysit-delta.sh, babysit-post.sh, moi-track.sh
 cmd/install/                  the installer
 internal/install/             copy and replace logic
 test/                         offline script tests with a stubbed gh
