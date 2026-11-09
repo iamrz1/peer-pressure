@@ -1,29 +1,37 @@
 #!/usr/bin/env bash
 # Keep the memory of a moi run: which findings were seen and when to stop.
 #
-# Usage: moi-track.sh <state-dir> init <base-sha>
+# Usage: moi-track.sh <state-dir> init <base-sha> [<owner/repo>]
 #        moi-track.sh <state-dir> round <report.json> [--max N]
 #        moi-track.sh <state-dir> commit <sha>
+#        moi-track.sh <state-dir> cycle
 #        moi-track.sh <state-dir> get <key>
 #
 # The state is <state-dir>/state.json. `init` creates it and leaves an existing one
-# alone, so a restarted run resumes. `round` records one review. It reads the
+# alone, so a restarted run resumes. It also holds what babysit-poll.sh --as author
+# reads (ownerRepo, lastSeenAt, readyNotifiedSha, ciHandledSha), and
+# babysit-state.sh can set those. `round` records one review. It reads the
 # findings of report.json, counts the ones not seen in an earlier round (NEW) and
 # the ones seen before (REPEATED, the same file and the same title once punctuation
 # and case are ignored), adds the new ones to the state, and writes
 # <state-dir>/prior-findings.md for the next round's prompt. It prints:
-#   ROUND     the number of this review
+#   ROUND     the number of this review in the current cycle
+#   TOTAL     the number of this review in the whole run
 #   FINDINGS  findings in this report
 #   NEW, REPEATED
 #   STOP      converged (no findings), repeated (a finding came back after it was
 #             fixed, so the loop is not converging), max-rounds (this was the last
 #             review allowed, default 5, and findings remain) or empty to go on
-# `commit` stores the sha of the commit that fixed the round. `get` prints a value.
+# TOTAL counts all reviews of the run, ROUND those of the current cycle. `commit` stores
+# the sha of the commit that fixed the round. `cycle` starts a new local loop, for
+# example after a reviewer's comment: ROUND starts again from 1 and the findings
+# already seen are kept, so a fixed finding that returns is still caught. `get` prints
+# a value.
 # Needs jq.
 set -euo pipefail
 
 usage() {
-  echo "usage: moi-track.sh <state-dir> init <base-sha> | round <report.json> [--max N] | commit <sha> | get <key>" >&2
+  echo "usage: moi-track.sh <state-dir> init <base-sha> [<owner/repo>] | round <report.json> [--max N] | commit <sha> | cycle | get <key>" >&2
   exit 2
 }
 
@@ -38,11 +46,14 @@ write() { local tmp; tmp=$(mktemp "$dir/.state.XXXXXX"); cat >"$tmp"; mv "$tmp" 
 
 case "$cmd" in
   init)
-    [ "$#" -eq 1 ] || usage
+    { [ "$#" -eq 1 ] || [ "$#" -eq 2 ]; } || usage
     mkdir -p "$dir"
     if [ ! -s "$file" ]; then
-      jq -n --arg base "$1" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        '{baseSha: $base, lastSha: $base, startedAt: $now, rounds: 0, seen: []}' >"$file"
+      jq -n --arg base "$1" --arg repo "${2:-}" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{
+        baseSha: $base, lastSha: $base, startedAt: $now, rounds: 0, total: 0, seen: [],
+        ownerRepo: (if $repo == "" then null else $repo end), lastSeenAt: $now,
+        readyNotifiedSha: null, ciHandledSha: null
+      }' >"$file"
     fi
     ;;
   get)
@@ -54,6 +65,11 @@ case "$cmd" in
     [ "$#" -eq 1 ] || usage
     need_state
     jq --arg sha "$1" '.lastSha = $sha' "$file" | write
+    ;;
+  cycle)
+    [ "$#" -eq 0 ] || usage
+    need_state
+    jq '.rounds = 0' "$file" | write
     ;;
   round)
     [ "$#" -eq 1 ] || [ "$#" -eq 3 ] || usage
@@ -76,9 +92,10 @@ case "$cmd" in
       | ($found | map(select(.fp as $f | $old | index($f) | not))) as $new
       | ($found | length - ($new | length)) as $repeated
       | .rounds = $n
+      | .total = ((.total // 0) + 1)
       | .seen += ($new | map({fp, file, title, round: $n}))
       | .last = {
-          round: $n, findings: ($found | length), new: ($new | length), repeated: $repeated,
+          round: $n, total: .total, findings: ($found | length), new: ($new | length), repeated: $repeated,
           stop: (if ($found | length) == 0 then "converged"
                  elif $repeated > 0 then "repeated"
                  elif $n >= $max then "max-rounds"
@@ -94,7 +111,7 @@ case "$cmd" in
       jq -r '.seen[] | "- round \(.round), \(.file): \(.title)"' "$file"
     } >"$dir/prior-findings.md"
 
-    jq -r '.last | "ROUND=\(.round)", "FINDINGS=\(.findings)", "NEW=\(.new)", "REPEATED=\(.repeated)", "STOP=\(.stop)"' "$file"
+    jq -r '.last | "ROUND=\(.round)", "TOTAL=\(.total)", "FINDINGS=\(.findings)", "NEW=\(.new)", "REPEATED=\(.repeated)", "STOP=\(.stop)"' "$file"
     ;;
   *) usage ;;
 esac

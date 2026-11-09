@@ -136,7 +136,12 @@ func TestToiAndMoiAreRouted(t *testing.T) {
 	if !strings.Contains(procedure, "moi-track.sh") {
 		t.Error("references/moi.md never uses moi-track.sh")
 	}
-	for _, rule := range []string{"what it never does", "push, force-push or amend", "post to github", "clean"} {
+	for _, want := range []string{"babysit-poll.sh", "babysit-wait.sh", "babysit-post.sh", "--as author", "--replies-now"} {
+		if !strings.Contains(procedure, want) {
+			t.Errorf("references/moi.md never uses %s", want)
+		}
+	}
+	for _, rule := range []string{"what it never does", "force-push or amend", "merge the pr", "submit a review", "resolve a thread that someone else started", "clean"} {
 		if !strings.Contains(strings.ToLower(procedure), rule) {
 			t.Errorf("references/moi.md does not state %q", rule)
 		}

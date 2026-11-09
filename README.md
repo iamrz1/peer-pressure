@@ -58,7 +58,7 @@ In an agent with slash commands:
 /peer-pressure --base feat/a    review against this ref (branch mode, for a stacked branch)
 /peer-pressure --stack 123      review the whole stack that PR 123 is in (--single: only that PR)
 /peer-pressure babysit 123      keep reviewing PR 123 until it is merged or closed (alias: toi)
-/peer-pressure moi              review and fix your own branch until nothing new is left
+/peer-pressure moi              take your own PR to approval: review, fix, push, fix CI, answer reviewers
 ```
 
 If PR 123 is part of a stack of PRs, you are asked whether to review only that PR or the whole stack. A whole-stack review runs the pipeline once on the combined diff, so problems between PRs are found. Each finding is then given to the PR that added the line, marked `#<number>` in the table, and posted as a pending review on that PR only.
@@ -83,11 +83,18 @@ The state of a run is in `.peer-pressure/babysit-pr-<number>/state.json`. See `r
 
 ### Moi
 
-`moi` polishes your own change. It reviews it, applies the findings at `ask` urgency or above, runs the repo's own checks, commits the round locally and reviews only what the fixes changed. It stops when a review finds nothing new, when a fixed finding comes back, or after `--max-rounds` reviews (default 5).
+`moi` takes your own change to approval.
 
-- It never pushes, posts or submits anything, and it never amends or touches earlier commits.
+1. It reviews the change, applies the findings at `ask` urgency or above, runs the repo's own checks, commits the round, and reviews only what the fixes changed. It stops when a review finds nothing new, when a fixed finding comes back, or after `--max-rounds` reviews (default 5).
+2. It pushes to the PR's branch, looks at CI, and fixes a failure that the change caused. A flaky job is rerun once.
+3. It marks a draft PR ready.
+4. It waits for reviewers. When a comment is right it changes the code and reviews that change the same way. It replies in your voice, at once, or into your pending review with `--pending-replies`.
+
+It is done when the PR has an approval and is ready to merge: no change request, CI passing, no conflicts, and no thread waiting on you. It does not merge.
+
+- It never force-pushes, amends, merges, submits a review, or resolves someone else's thread.
 - The working tree must be clean when it starts, so each round holds only its own fixes.
-- When it ends it shows the round commits and how to fold or drop them. It does not do either.
+- Without a PR it runs only the local loop and does not push.
 
 The state of a run is in `.peer-pressure/moi-<label>/state.json`. See `references/moi.md`.
 
@@ -121,7 +128,7 @@ On a PR that already has review threads, reviewers skip points that are already 
 - The review is shown before anything else happens.
 - Posted reviews stay **pending**. You submit them in GitHub. The posting scripts never call a submit endpoint.
 - Babysit acts without asking after the first yes, but only on that PR, and only by adding to your pending review, replying and resolving threads.
-- Moi acts without asking after the first yes, but only by editing and committing locally on your checked-out branch. It never pushes.
+- Moi acts without asking after the first yes: edits and commits on your checked-out branch, pushes to the PR's own branch, reruns CI jobs, marks a draft ready, and replies to reviewers. It never force-pushes, merges or submits a review.
 - Comments on lines outside the diff go into the review body, because GitHub rejects the whole review otherwise.
 - Review files live in `.peer-pressure/` in the repo and are excluded through `.git/info/exclude`. Your `.gitignore` is not touched.
 - Do not review changes that contain personal data, health data or secrets with a tool you have not cleared for that. The review text is sent to your agent's model provider, and posted comments go to GitHub.

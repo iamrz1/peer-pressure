@@ -1,0 +1,21 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "id": "PR_node",
+        "reviews": {
+          "nodes": []
+        }
+      }
+    },
+    "node": {
+      "comments": {
+        "nodes": [
+          {
+            "fullDatabaseId": "4242"
+          }
+        ]
+      }
+    }
+  }
+}

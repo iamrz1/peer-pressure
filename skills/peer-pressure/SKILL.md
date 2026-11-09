@@ -1,6 +1,6 @@
 ---
 name: peer-pressure
-description: Multi-agent code review where reviewers covering correctness, security, architecture, docs, compatibility, performance and maintainability raise findings with evidence, and an independent verifier tries to disprove each one before anything is reported. Reviews a GitHub PR, the current branch, or specific files. Shows the review first, then offers to apply fixes or post a pending PR review. `babysit <PR>` (alias `toi`) keeps reviewing someone else's PR until it is merged or closed. `moi` reviews and fixes your own change until nothing new is left. Use when asked to review a PR, a branch, a diff, or files, or to babysit a PR.
+description: Multi-agent code review where reviewers covering correctness, security, architecture, docs, compatibility, performance and maintainability raise findings with evidence, and an independent verifier tries to disprove each one before anything is reported. Reviews a GitHub PR, the current branch, or specific files. Shows the review first, then offers to apply fixes or post a pending PR review. `babysit <PR>` (alias `toi`) keeps reviewing someone else's PR until it is merged or closed. `moi` takes your own change to approval: it reviews and fixes it, pushes, fixes CI and answers reviewers. Use when asked to review a PR, a branch, a diff, or files, or to babysit a PR.
 license: MIT
 compatibility: Needs git. PR mode and posting also need gh (authenticated) and jq. Runs reviewers in parallel when the host can start subagents, and one after another otherwise.
 metadata:
@@ -17,7 +17,7 @@ You orchestrate a review pipeline. Three reviewers work alone, each through two 
 
 If the request starts with `babysit` or `toi`, read `references/babysit.md` and follow it instead of the steps below. It keeps reviewing someone else's PR, and reuses Steps 3 to 8 and Step 12 for each pass.
 
-If it starts with `moi`, read `references/moi.md` and follow it instead. It reviews and fixes the user's own change until nothing new is left, and reuses Steps 2 to 8 and Step 11 for each round.
+If it starts with `moi`, read `references/moi.md` and follow it instead. It takes the user's own change to approval: it reviews and fixes it in rounds, pushes it, fixes CI, marks a draft PR ready, and answers reviewers. It reuses Steps 2 to 8 and Step 11 for each round.
 
 The word must be the first word of the request and be followed by a PR number, flags or nothing. A sentence that happens to start with one of them is a normal request.
 
@@ -233,7 +233,7 @@ If the user says no or wants changes, do not post. `threads.json` can be edited 
 
 ## Rules
 
-- Never apply fixes or post comments without the user's answer in Step 10. There are two exceptions, each covered by one yes at the start of the run. `babysit` may add to the user's pending review, reply to threads and resolve threads on that PR. `moi` may apply fixes and commit them locally on the checked-out branch. Neither may do anything else, and neither pushes.
+- Never apply fixes or post comments without the user's answer in Step 10. There are two exceptions, each covered by one yes at the start of the run. `babysit` may add to the user's pending review, reply to threads and resolve threads on that PR. `moi` may apply fixes, commit them, push to the PR's own branch, fix CI, mark a draft PR ready and reply to reviewers. Neither may do anything else. Neither merges, force-pushes, submits a review or resolves another person's thread.
 - Never submit a GitHub review. Posted reviews stay pending. Never call a submit endpoint yourself.
 - Keep your own context small. Use the paths, stats lines and summaries that steps return. Do not read findings, candidates or verdicts files yourself. You read `report.json`, the change notes and the PR files in Step 9, `scored.json` in the quick path, and the dry-run output in Step 12.
 - If a step fails, say which one and continue with what you have, unless the step says stop.
