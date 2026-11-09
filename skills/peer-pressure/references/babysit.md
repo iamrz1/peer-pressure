@@ -1,6 +1,6 @@
 # Babysit
 
-`babysit <PR>` reviews a PR over its whole life. It reviews each push as it arrives, follows up on the threads it raised, tells the user what happened, and stops when the PR is merged or closed. It is for reviewing someone else's PR.
+`babysit <PR>` (also `toi <PR>`) reviews a PR over its whole life. It reviews each push as it arrives, follows up on the threads it raised, tells the user what happened, and stops when the PR is merged or closed. It is for reviewing someone else's PR. `moi` is the counterpart for your own change (see `moi.md`).
 
 `SKILL_DIR` is as in `SKILL.md`. The scripts do the checking and the posting. You decide what to review and what to say.
 

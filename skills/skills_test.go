@@ -121,6 +121,28 @@ func TestBabysitProcedureUsesItsScripts(t *testing.T) {
 	}
 }
 
+func TestToiAndMoiAreRouted(t *testing.T) {
+	doc := skillFile(t, "SKILL.md")
+	for _, want := range []string{"`toi`", "`moi`", "references/moi.md", "references/babysit.md"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("SKILL.md does not mention %s", want)
+		}
+	}
+	if !strings.Contains(skillFile(t, "references/babysit.md"), "toi") {
+		t.Error("references/babysit.md does not mention its alias toi")
+	}
+
+	procedure := skillFile(t, "references/moi.md")
+	if !strings.Contains(procedure, "moi-track.sh") {
+		t.Error("references/moi.md never uses moi-track.sh")
+	}
+	for _, rule := range []string{"what it never does", "push, force-push or amend", "post to github", "clean"} {
+		if !strings.Contains(strings.ToLower(procedure), rule) {
+			t.Errorf("references/moi.md does not state %q", rule)
+		}
+	}
+}
+
 func TestPerspectiveTableMatchesFiles(t *testing.T) {
 	doc := skillFile(t, "SKILL.md")
 	entries, err := fs.ReadDir(FS, Name+"/references/perspectives")

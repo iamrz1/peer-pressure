@@ -427,4 +427,29 @@ check "no actions do nothing" "0" "$("$scripts/babysit-post.sh" 14 "$tmp/empty-a
 unset GH_STUB_VIEW
 export GH_STUB_THREADS="$root/test/fixtures/graphql-threads.json"
 
+# moi: tracking rounds and the stop decision
+mt="$tmp/moi"
+rep() { jq -n --argjson f "$1" '{findings: $f}' >"$tmp/moi-report.json"; }
+mr() { "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" "$@" | paste -sd' ' -; }
+"$scripts/moi-track.sh" "$mt" init abc111
+"$scripts/moi-track.sh" "$mt" init zzz999
+check "moi init keeps an existing state" abc111 "$("$scripts/moi-track.sh" "$mt" get baseSha)"
+rep '[{"file":"a.go","title":"Error dropped on Flush"},{"file":"b.go","title":"Missing doc"}]'
+check "round 1 reports new findings and goes on" "ROUND=1 FINDINGS=2 NEW=2 REPEATED=0 STOP=" "$(mr)"
+check "prior findings are written for the next round" 2 "$(grep -c '^- round 1' "$mt/prior-findings.md")"
+"$scripts/moi-track.sh" "$mt" commit def222
+check "the round commit is stored" def222 "$("$scripts/moi-track.sh" "$mt" get lastSha)"
+rep '[{"file":"a.go","title":"error dropped on flush!"}]'
+check "the same finding in other words and case is a repeat" "ROUND=2 FINDINGS=1 NEW=0 REPEATED=1 STOP=repeated" "$(mr)"
+rep '[{"file":"c.go","title":"New problem"}]'
+check "a new finding goes on" "ROUND=3 FINDINGS=1 NEW=1 REPEATED=0 STOP=" "$(mr)"
+check "the cap stops with findings left" "ROUND=4 FINDINGS=1 NEW=1 REPEATED=0 STOP=max-rounds" "$(rep '[{"file":"d.go","title":"Another"}]'; mr --max 4)"
+rep '[]'
+check "no findings is converged" "ROUND=5 FINDINGS=0 NEW=0 REPEATED=0 STOP=converged" "$(mr)"
+check "converged wins over the cap" "STOP=converged" "$(mr --max 1 | sed -E 's/.*(STOP=.*)/\1/')"
+check "the earlier findings stay on record" 4 "$(jq '.seen | length' "$mt/state.json")"
+echo '{"nope":1}' >"$tmp/moi-report.json"
+if "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" 2>/dev/null; then check "a report without findings is rejected" fail ok; else check "a report without findings is rejected" 2 "$?"; fi
+if "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" --max 0 2>/dev/null; then check "a zero cap is rejected" fail ok; else check "a zero cap is rejected" 2 "$?"; fi
+
 exit "$fail"
