@@ -480,7 +480,10 @@ mr() { "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" "$@" | paste -
 "$scripts/moi-track.sh" "$mt" init abc111
 "$scripts/moi-track.sh" "$mt" init zzz999
 check "moi init keeps an existing state" abc111 "$("$scripts/moi-track.sh" "$mt" get baseSha)"
+"$scripts/babysit-state.sh" "$tmp/moi2" init 14 octo/demo
+"$scripts/babysit-state.sh" "$tmp/moi2" set workdir=/somewhere/clone
 "$scripts/moi-track.sh" "$tmp/moi2" init abc111 octo/demo
+check "moi init adds to a state that exists and keeps what is set" "/somewhere/clone 14 abc111" "$("$scripts/moi-track.sh" "$tmp/moi2" get workdir) $("$scripts/moi-track.sh" "$tmp/moi2" get pr) $("$scripts/moi-track.sh" "$tmp/moi2" get baseSha)"
 check "moi init stores what the author poll reads" "octo/demo" "$("$scripts/moi-track.sh" "$tmp/moi2" get ownerRepo)"
 check "moi init sets lastSeenAt" 1 "$(jq 'has("lastSeenAt") and (.lastSeenAt | type == "string") | if . then 1 else 0 end' "$tmp/moi2/state.json")"
 "$scripts/babysit-state.sh" "$tmp/moi2" set ciHandledSha=def456 pr=14
@@ -506,5 +509,72 @@ check "a finding fixed in an earlier cycle is still a repeat" "ROUND=1 TOTAL=7 F
 echo '{"nope":1}' >"$tmp/moi-report.json"
 if "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" 2>/dev/null; then check "a report without findings is rejected" fail ok; else check "a report without findings is rejected" 2 "$?"; fi
 if "$scripts/moi-track.sh" "$mt" round "$tmp/moi-report.json" --max 0 2>/dev/null; then check "a zero cap is rejected" fail ok; else check "a zero cap is rejected" 2 "$?"; fi
+
+# workdir: a temporary clone for a long-running loop
+wd="$tmp/wd"
+mkdir -p "$wd"
+gi() { git -c user.name=t -c user.email=t@example.com "$@"; }
+git init -q --bare "$wd/remote.git"
+git -C "$wd/remote.git" symbolic-ref HEAD refs/heads/main
+git init -q -b main "$wd/seed"
+echo a >"$wd/seed/a.txt"
+gi -C "$wd/seed" add a.txt
+gi -C "$wd/seed" commit -q -m a
+git -C "$wd/seed" checkout -q -b feature
+echo b >"$wd/seed/b.txt"
+gi -C "$wd/seed" add b.txt
+gi -C "$wd/seed" commit -q -m b
+git -C "$wd/seed" remote add origin "$wd/remote.git"
+git -C "$wd/seed" push -q origin main feature
+git -C "$wd/seed" push -q origin feature:refs/pull/7/head
+export GH_STUB_REMOTE="$wd/remote.git"
+wk() { "$scripts/workdir.sh" "$@"; }
+kv() { sed -n "s/^$1=//p"; }
+
+"$scripts/babysit-state.sh" "$wd/s1" init 7 octo/demo
+out=$(wk create 7 octo/demo "$wd/s1")
+w1=$(kv WORKDIR <<<"$out")
+check "the clone is a peer-pressure directory under the temp directory" "yes" "$(case "$(basename "$w1")" in peer-pressure-pr7.*) echo yes ;; *) echo no ;; esac)"
+check "the clone is on the PR branch" feature "$(kv BRANCH <<<"$out")"
+check "the clone holds the PR's files" "b" "$(cat "$w1/b.txt")"
+check "the directory is stored in the state" "$w1" "$("$scripts/babysit-state.sh" "$wd/s1" get workdir)"
+check "path finds the clone" "$w1" "$(wk path "$wd/s1")"
+check "a clean, pushed clone is removed" "REMOVED=$w1" "$(wk remove "$wd/s1" | head -1)"
+check "the directory is gone" no "$([ -d "$w1" ] && echo yes || echo no)"
+check "the state forgets it" "" "$("$scripts/babysit-state.sh" "$wd/s1" get workdir)"
+if wk path "$wd/s1" >/dev/null 2>&1; then check "path fails without a clone" fail ok; else check "path fails without a clone" 1 "$?"; fi
+
+out=$(wk create 7 octo/demo "$wd/s1")
+w2=$(kv WORKDIR <<<"$out")
+echo dirty >"$w2/b.txt"
+check "uncommitted changes keep the clone" "it has uncommitted changes" "$(wk remove "$wd/s1" | kv REASON)"
+check "a kept clone is still there" yes "$([ -d "$w2" ] && echo yes || echo no)"
+gi -C "$w2" commit -q -am local
+check "unpushed commits keep the clone" "it has commits that are not pushed" "$(wk remove "$wd/s1" | kv REASON)"
+git -C "$w2" push -q origin feature
+check "after the push it is removed" "REMOVED=$w2" "$(wk remove "$wd/s1" | head -1)"
+
+"$scripts/babysit-state.sh" "$wd/s2" init 7 octo/demo
+out=$(wk create 7 octo/demo "$wd/s2" --read-only)
+w3=$(kv WORKDIR <<<"$out")
+check "a read-only clone is detached" "" "$(kv BRANCH <<<"$out")"
+check "a read-only clone is at the PR head" "$(git -C "$wd/seed" rev-parse feature)" "$(kv HEAD_SHA <<<"$out")"
+echo c >"$wd/seed/c.txt"
+gi -C "$wd/seed" add c.txt
+gi -C "$wd/seed" commit -q -m c
+git -C "$wd/seed" push -q origin feature:refs/pull/7/head
+check "sync follows a new push" "$(git -C "$wd/seed" rev-parse feature)" "$(wk sync "$wd/s2" | kv HEAD_SHA)"
+check "sync brings the new file" "c" "$(cat "$w3/c.txt")"
+check "a detached clone with no changes is removed" "REMOVED=$w3" "$(wk remove "$wd/s2" | head -1)"
+
+"$scripts/babysit-state.sh" "$wd/s3" init 7 octo/demo
+"$scripts/babysit-state.sh" "$wd/s3" set workdir="$wd"
+check "a directory that is not ours is never removed" "not a peer-pressure temporary directory" "$(wk remove "$wd/s3" | kv REASON)"
+check "and it is still there" yes "$([ -d "$wd/seed" ] && echo yes || echo no)"
+mkdir -p "$wd/peer-pressure-pr7.fake/.git"
+"$scripts/babysit-state.sh" "$wd/s3" set workdir="$wd/peer-pressure-pr7.fake"
+check "a name that fits but a wrong place is never removed" "not directly under the temporary directory" "$(wk remove "$wd/s3" | kv REASON)"
+if wk create x octo/demo "$wd/s3" 2>/dev/null; then check "create rejects a bad PR number" fail ok; else check "create rejects a bad PR number" 2 "$?"; fi
+unset GH_STUB_REMOTE
 
 exit "$fail"

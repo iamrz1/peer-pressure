@@ -69,6 +69,8 @@ Elsewhere, ask in plain words: "Use the peer-pressure skill to review PR 123."
 
 `toi` (you) is for someone else's PR and `moi` (me) is for your own. Say yes once and each runs without asking again.
 
+Both can run for hours, so each works in its own temporary clone of the PR's branch. Your checkout, its branch and its uncommitted changes are never touched. The clone is removed when the loop ends, but only when that loses nothing: if it holds uncommitted or unpushed work, it is kept and you are told where.
+
 ### Babysit, also `toi`
 
 `babysit 123` follows someone else's PR to the end. You say yes once, then it runs on its own until the PR is merged or closed, you tell it to stop, or you close the terminal. Running it again resumes from where it stopped.
@@ -93,8 +95,7 @@ The state of a run is in `.peer-pressure/babysit-pr-<number>/state.json`. See `r
 It is done when the PR has an approval and is ready to merge: no change request, CI passing, no conflicts, and no thread waiting on you. It does not merge.
 
 - It never force-pushes, amends, merges, submits a review, or resolves someone else's thread.
-- The working tree must be clean when it starts, so each round holds only its own fixes.
-- Without a PR it runs only the local loop and does not push.
+- Without a PR it runs only the local loop, in place, and the working tree must be clean so each round holds only its own fixes. It does not push.
 
 The state of a run is in `.peer-pressure/moi-<label>/state.json`. See `references/moi.md`.
 
@@ -143,7 +144,7 @@ skills/peer-pressure/
   references/pipeline/        reviewer, verifier, urgency, quick-reviewer, summary, planner, applier, formatter
   references/babysit.md       the babysit (toi) procedure
   references/moi.md           the moi procedure
-  scripts/                    route-diff.sh, split-diff.sh, cluster-findings.sh, apply-verdicts.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, diff-lines.sh, post-pending-review.sh, babysit-state.sh, babysit-poll.sh, babysit-wait.sh, babysit-delta.sh, babysit-post.sh, moi-track.sh
+  scripts/                    route-diff.sh, split-diff.sh, cluster-findings.sh, apply-verdicts.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, diff-lines.sh, post-pending-review.sh, babysit-state.sh, babysit-poll.sh, babysit-wait.sh, babysit-delta.sh, babysit-post.sh, moi-track.sh, workdir.sh
 cmd/install/                  the installer
 internal/install/             copy and replace logic
 test/                         offline script tests with a stubbed gh

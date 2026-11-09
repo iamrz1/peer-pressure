@@ -141,6 +141,13 @@ func TestToiAndMoiAreRouted(t *testing.T) {
 			t.Errorf("references/moi.md never uses %s", want)
 		}
 	}
+	for _, name := range []string{"references/babysit.md", "references/moi.md"} {
+		for _, want := range []string{"workdir.sh", "remove"} {
+			if !strings.Contains(skillFile(t, name), want) {
+				t.Errorf("%s does not use workdir.sh %s", name, want)
+			}
+		}
+	}
 	for _, rule := range []string{"what it never does", "force-push or amend", "merge the pr", "submit a review", "resolve a thread that someone else started", "clean"} {
 		if !strings.Contains(strings.ToLower(procedure), rule) {
 			t.Errorf("references/moi.md does not state %q", rule)
