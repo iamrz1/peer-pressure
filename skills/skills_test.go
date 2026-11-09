@@ -135,18 +135,44 @@ func perspectiveNames(t *testing.T) []string {
 }
 
 func TestPromptsNameEveryPerspective(t *testing.T) {
-	merger := skillFile(t, "references/pipeline/merger.md")
-	validator := skillFile(t, "references/pipeline/validator.md")
+	verifier := skillFile(t, "references/pipeline/verifier.md")
+	bar := skillFile(t, "references/bar.md")
 	quick := skillFile(t, "references/pipeline/quick-reviewer.md")
+	cluster := skillFile(t, "scripts/cluster-findings.sh")
+	score := skillFile(t, "scripts/score-findings.sh")
 	for _, perspective := range perspectiveNames(t) {
-		if !strings.Contains(merger, "`"+perspective+"`") {
-			t.Errorf("merger.md does not list the %q source name", perspective)
+		if !strings.Contains(verifier, "`"+perspective+"`") {
+			t.Errorf("verifier.md does not list the %q source name", perspective)
 		}
-		if !strings.Contains(validator, "| "+perspective+" |") {
-			t.Errorf("validator.md has no scoring row for the %q lens", perspective)
+		if !strings.Contains(bar, "| "+perspective+" |") {
+			t.Errorf("bar.md has no score row for the %q lens", perspective)
 		}
 		if !strings.Contains(quick, "`"+perspective+"`") {
 			t.Errorf("quick-reviewer.md does not list the %q source name", perspective)
+		}
+		for name, script := range map[string]string{"cluster-findings.sh": cluster, "score-findings.sh": score} {
+			if !strings.Contains(script, `"`+perspective+`"`) {
+				t.Errorf("%s does not know the %q lens", name, perspective)
+			}
+		}
+	}
+}
+
+func TestEveryPerspectiveHasAReviewer(t *testing.T) {
+	doc := skillFile(t, "SKILL.md")
+	rows := regexp.MustCompile("(?m)^\\| (behavior|contracts|structure) \\| (.+?) \\|").FindAllStringSubmatch(doc, -1)
+	if len(rows) != 3 {
+		t.Fatalf("SKILL.md has %d reviewer rows, want 3", len(rows))
+	}
+	seen := map[string]int{}
+	for _, row := range rows {
+		for _, f := range regexp.MustCompile("`([a-z]+)\\.md`").FindAllStringSubmatch(row[2], -1) {
+			seen[f[1]]++
+		}
+	}
+	for _, perspective := range perspectiveNames(t) {
+		if seen[perspective] != 1 {
+			t.Errorf("perspective %q is owned by %d reviewers, want 1", perspective, seen[perspective])
 		}
 	}
 }
@@ -169,7 +195,7 @@ func TestTableColumns(t *testing.T) {
 
 func TestUrgencyLevelsAreConsistent(t *testing.T) {
 	levels := []string{"insist", "ask", "author", "optional"}
-	for _, f := range []string{"references/pipeline/triage.md", "scripts/render-table.sh", "scripts/build-report.sh"} {
+	for _, f := range []string{"references/pipeline/urgency.md", "scripts/render-table.sh", "scripts/build-report.sh"} {
 		doc := skillFile(t, f)
 		for _, level := range levels {
 			if !strings.Contains(doc, level) {
@@ -179,18 +205,51 @@ func TestUrgencyLevelsAreConsistent(t *testing.T) {
 	}
 }
 
-func TestReviewersDropNitsEarly(t *testing.T) {
+func TestReviewersApplyTheBar(t *testing.T) {
 	files := []string{"references/pipeline/quick-reviewer.md"}
 	for _, perspective := range perspectiveNames(t) {
 		files = append(files, "references/perspectives/"+perspective+".md")
 	}
 	for _, f := range files {
 		doc := skillFile(t, f)
-		if !strings.Contains(doc, "## Drop nits early") {
-			t.Errorf("%s has no \"Drop nits early\" section", f)
+		if !strings.Contains(doc, "## Review bar") || !strings.Contains(doc, "`bar.md`") {
+			t.Errorf("%s has no \"Review bar\" section pointing at bar.md", f)
+		}
+		if strings.Contains(doc, "## Drop nits early") {
+			t.Errorf("%s has its own copy of the nit rules; they live in bar.md", f)
 		}
 		if strings.Contains(doc, "critical | warning | suggestion") {
 			t.Errorf("%s still offers reviewers a suggestion level", f)
+		}
+	}
+	for _, perspective := range perspectiveNames(t) {
+		if !strings.Contains(skillFile(t, "references/perspectives/"+perspective+".md"), "`reviewer.md`") {
+			t.Errorf("%s.md does not point at reviewer.md for its output format", perspective)
+		}
+	}
+	// The quick reviewer, the full reviewers and the verifier each get the bar in their prompt.
+	if n := strings.Count(skillFile(t, "SKILL.md"), "references/bar.md"); n != 3 {
+		t.Errorf("SKILL.md names bar.md in %d prompts, want 3", n)
+	}
+	bar := skillFile(t, "references/bar.md")
+	for _, want := range []string{"## Evidence", "## Scores", "`unsound`", "`regression`", "`intent`", "`convention`", "`docs`"} {
+		if !strings.Contains(bar, want) {
+			t.Errorf("bar.md does not contain %q", want)
+		}
+	}
+}
+
+func TestVerifierDefinesTheVerdicts(t *testing.T) {
+	verifier := skillFile(t, "references/pipeline/verifier.md")
+	for _, want := range []string{"`confirmed`", "`plausible`", "`nit`", "`disproved`", "`confidence`", "`argument`", "`urgency`"} {
+		if !strings.Contains(verifier, want) {
+			t.Errorf("verifier.md does not contain %q", want)
+		}
+	}
+	apply := skillFile(t, "scripts/apply-verdicts.sh")
+	for _, want := range []string{"confirmed", "plausible", "nit", "disproved"} {
+		if !strings.Contains(apply, want) {
+			t.Errorf("apply-verdicts.sh does not handle the %q verdict", want)
 		}
 	}
 }

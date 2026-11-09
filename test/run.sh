@@ -154,23 +154,20 @@ session="$tmp/scoring"
 mkdir -p "$session"
 cp "$root"/test/fixtures/session/* "$session"/
 stats=$("$scripts/score-findings.sh" "$session")
-check "stats count labels and drops" "1 critical, 1 warnings, 1 suggestions, 1 dropped" "$stats"
+check "stats count labels" "1 critical, 1 warnings, 1 suggestions" "$stats"
 check "findings follow input file order" "F2 F4 F1" "$(jq -r '[.findings[].id] | join(" ")' "$session/scored.json")"
 check "findings are numbered after sorting" "1 2 3" "$(jq -r '[.findings[].n] | join(" ")' "$session/scored.json")"
 check "score is the sum of lens scores" 5 "$(jq '.findings[0].score' "$session/scored.json")"
 check "label comes from the highest score" "critical warning" "$(jq -r '[.findings[0].label, .findings[2].label] | join(" ")' "$session/scored.json")"
 check "a high sum does not beat the highest score" suggestion "$(jq -r '.findings[1].label' "$session/scored.json")"
-check "scores of disproving validators are ignored" 2 "$(jq '.findings[1].score' "$session/scored.json")"
-check "majority drop removes a finding" F3 "$(jq -r '.dropped[0].id' "$session/scored.json")"
-check "unreadable vote lines are skipped" 3 "$(jq '[.findings[].votes.keep] | max' "$session/scored.json")"
-check "trivial from a lens that did not find it is no drop vote" 0 "$(jq '.findings[] | select(.id == "F4") | .votes.drop' "$session/scored.json")"
-check "all-confirm gives high confidence" high "$(jq -r '.findings[0].confidence' "$session/scored.json")"
+check "confidence passes through, medium by default" "high medium" "$(jq -r '[.findings[0].confidence, .findings[1].confidence] | join(" ")' "$session/scored.json")"
 
 "$scripts/build-report.sh" "$session" >"$tmp/report.out"
 check "urgency joins by id" "insist author" "$(jq -r '[.findings[0].urgency, .findings[2].urgency] | join(" ")' "$session/report.json")"
 check "unknown urgency is blanked" "" "$(jq -r '.findings[1].urgency' "$session/report.json")"
 check "blocking urgency means not ready" false "$(jq '.ready' "$session/report.json")"
 check "synthesis lists findings outside the drift section" 2 "$(grep -c '^### ' "$session/synthesis.md")"
+check "synthesis carries evidence" "**Evidence:** pkg/a.go:2 discards the error from Flush." "$(grep -m1 '^\*\*Evidence' "$session/synthesis.md")"
 check "synthesis carries sources" "Sources: correctness, architecture" "$(grep -m1 '^Sources:' "$session/synthesis.md")"
 check "docs-only warnings become drift items" 1 "$(grep -c 'Sources: docs)' "$session/synthesis.md")"
 
@@ -208,27 +205,130 @@ quick="$tmp/quick"
 mkdir -p "$quick"
 cp "$root/test/fixtures/session/input.txt" "$quick/"
 echo '[{"id":"F1","title":"t","file":"pkg/a.go","line":2,"sources":["security"],"scores":{"security":3,"correctness":1}}]' >"$quick/merged.json"
-check "quick mode scores without validators" "1 critical, 0 warnings, 0 suggestions, 0 dropped" "$("$scripts/score-findings.sh" "$quick" --quick)"
-check "quick mode sums its own scores" 4 "$(jq '.findings[0].score' "$quick/scored.json")"
+check "a finding is scored from its own lens scores" "1 critical, 0 warnings, 0 suggestions" "$("$scripts/score-findings.sh" "$quick")"
+check "the lens scores are summed" 4 "$(jq '.findings[0].score' "$quick/scored.json")"
 
 empty="$tmp/empty"
 mkdir -p "$empty"
 cp "$root/test/fixtures/session/input.txt" "$empty/"
 echo '[]' >"$empty/merged.json"
-if "$scripts/score-findings.sh" "$empty" 2>/dev/null; then
-  check "missing votes are an error" fail ok
-else
-  check "missing votes are an error" 3 "$?"
-fi
-check "an empty merge scores to zero findings" "0 critical, 0 warnings, 0 suggestions, 0 dropped" "$("$scripts/score-findings.sh" "$empty" --quick)"
+check "an empty merge scores to zero findings" "0 critical, 0 warnings, 0 suggestions" "$("$scripts/score-findings.sh" "$empty")"
 "$scripts/build-report.sh" "$empty" >/dev/null
 check "an empty report is ready to merge" true "$(jq '.ready' "$empty/report.json")"
 check "an empty report renders no table" "No issues found." "$("$scripts/render-table.sh" "$empty")"
 echo '{"not":"an array"}' >"$empty/merged.json"
-if "$scripts/score-findings.sh" "$empty" --quick 2>/dev/null; then
+if "$scripts/score-findings.sh" "$empty" 2>/dev/null; then
   check "invalid merged.json is rejected" fail ok
 else
   check "invalid merged.json is rejected" 2 "$?"
 fi
+
+sp="$tmp/split"
+mkdir -p "$sp"
+{
+  for i in 1 2 3; do
+    printf 'diff --git a/f%s.go b/f%s.go\n--- a/f%s.go\n+++ b/f%s.go\n@@ -1,2 +1,2 @@\n' "$i" "$i" "$i" "$i"
+    for j in $(seq 1 40); do echo "+line $i $j padding padding padding"; done
+  done
+} >"$sp/input.txt"
+check "a small input is one chunk" "CHUNKS=1" "$("$scripts/split-diff.sh" "$sp" | sed -n 1p)"
+check "a one-chunk input is used as it is" "CHUNK_1=$sp/input.txt" "$("$scripts/split-diff.sh" "$sp" | sed -n 2p)"
+"$scripts/split-diff.sh" "$sp" --limit 2500 >"$tmp/split.out"
+check "a larger input is cut at file boundaries" "CHUNKS=3" "$(sed -n 1p "$tmp/split.out")"
+check "each chunk holds one whole file" "1 1 1" "$(for c in "$sp"/chunk-*.txt; do grep -c '^diff --git' "$c"; done | paste -sd' ' -)"
+check "no line is lost when splitting" 120 "$(cat "$sp"/chunk-*.txt | grep -c '^+line')"
+
+big="$tmp/split-big"
+mkdir -p "$big"
+{
+  printf 'diff --git a/big.go b/big.go\n--- a/big.go\n+++ b/big.go\n'
+  for h in 1 2 3 4; do
+    echo "@@ -$h,1 +$h,1 @@"
+    for j in $(seq 1 25); do echo "+hunk $h line $j padding padding"; done
+  done
+} >"$big/input.txt"
+"$scripts/split-diff.sh" "$big" --limit 1500 >/dev/null
+check "a large file is cut at hunk boundaries" "1 1 1 1" "$(for c in "$big"/chunk-*.txt; do grep -c '^@@' "$c"; done | paste -sd' ' -)"
+check "every part repeats the file header" 4 "$(cat "$big"/chunk-*.txt | grep -c '^diff --git a/big.go')"
+check "no chunk is over the limit" 0 "$(for c in "$big"/chunk-*.txt; do [ "$(wc -c <"$c" | tr -d ' ')" -gt 1500 ] && echo over; done | wc -l | tr -d ' ')"
+check "no line is lost when splitting a file" 100 "$(cat "$big"/chunk-*.txt | grep -c '^+hunk')"
+if "$scripts/split-diff.sh" "$sp" --limit abc 2>/dev/null; then
+  check "a non-numeric limit is rejected" fail ok
+else
+  check "a non-numeric limit is rejected" 2 "$?"
+fi
+
+cl="$tmp/cluster"
+mkdir -p "$cl"
+cp "$root/test/fixtures/session/input.txt" "$cl/"
+f() { printf '{"title":"%s","file":"%s","line":%s,"lens":"%s","bar":"%s","evidence":"%s","problem":"p","impact":"i","fix":"f","score":2}' "$1" "$2" "$3" "$4" "$5" "$6"; }
+{
+  echo "["
+  f "Flush error dropped" pkg/a.go 2 correctness unsound "pkg/a.go:2 discards the error"
+  echo ","
+  f "Rename helper" pkg/a.go 5 maintainability convention "helper name differs from pkg/b.go:9"
+  echo ","
+  f "Far away problem" pkg/a.go 40 security unsound "pkg/a.go:40 reads input unchecked"
+  echo ","
+  f "Stale README claim" README.md null docs docs "README row 3 says close flushes"
+  echo ","
+  f "No evidence given" pkg/a.go 60 correctness unsound ""
+  echo "]"
+} >"$cl/findings-behavior-1.json"
+{
+  echo "["
+  f "stale readme claim" README.md null docs docs "README row 3 says close flushes"
+  echo ","
+  f "Wrong category" pkg/a.go 70 correctness style "something long enough here"
+  echo ","
+  f "Unknown lens" pkg/a.go 80 taste unsound "something long enough here"
+  echo ","
+  f "Fits no category" pkg/b.go 3 maintainability other "pkg/b.go:3 does X where pkg/c.go:9 does Y"
+  echo "]"
+} >"$cl/findings-structure-1.json"
+echo '{broken' >"$cl/findings-contracts-1.json"
+"$scripts/cluster-findings.sh" "$cl" --per 2 >"$tmp/cluster.out"
+check "findings are clustered by file and nearby lines" "CLUSTERS=4" "$(grep ^CLUSTERS "$tmp/cluster.out")"
+check "findings with no evidence, category or lens are gated" "GATED=3" "$(grep ^GATED "$tmp/cluster.out")"
+check "an unreadable findings file is reported" "UNREADABLE=findings-contracts-1.json" "$(grep ^UNREADABLE "$tmp/cluster.out")"
+check "one verifier per slice of clusters" "VERIFIERS=2" "$(grep ^VERIFIERS "$tmp/cluster.out")"
+check "the last slice holds the rest" 2 "$(jq length "$cl/candidates-2.json")"
+check "an other-tagged finding reaches the verifier" "Fits no category" "$(jq -r '[.[] | select(.file == "pkg/b.go")][0].members[0].title' "$cl/candidates.json")"
+check "nearby lines share a cluster" "2" "$(jq '[.[] | select(.file == "pkg/a.go")][0].members | length' "$cl/candidates.json")"
+check "lines far apart are separate clusters" "2 1" "$(jq -r '[.[] | select(.file == "pkg/a.go")] | map(.members | length) | map(tostring) | join(" ")' "$cl/candidates.json")"
+check "findings without a line cluster by title" "2" "$(jq '[.[] | select(.file == "README.md")][0].members | length' "$cl/candidates.json")"
+check "a cluster lists its lenses" "correctness maintainability" "$(jq -r '[.[] | select(.line == 2)][0].lenses | join(" ")' "$cl/candidates.json")"
+check "gate.txt says why" 1 "$(grep -c 'no evidence' "$cl/gate.txt")"
+rm -f "$cl/findings-behavior-1.json" "$cl/findings-structure-1.json" "$cl/findings-contracts-1.json"
+if "$scripts/cluster-findings.sh" "$cl" 2>/dev/null; then
+  check "no findings files is an error" fail ok
+else
+  check "no findings files is an error" 3 "$?"
+fi
+
+ap="$tmp/verdicts"
+mkdir -p "$ap"
+cp "$root/test/fixtures/session/input.txt" "$ap/"
+cat >"$ap/candidates.json" <<'JSON'
+[{"id":"C1","file":"README.md"},{"id":"C2","file":"README.md"},{"id":"C3","file":"pkg/a.go"},{"id":"C4","file":"pkg/a.go"}]
+JSON
+cat >"$ap/verdicts-1.json" <<'JSON'
+[
+  {"id":"C1","verdict":"plausible","confidence":"high","argument":"README row 3 shows it","title":"Stale claim","file":"README.md","line":3,"sources":["docs"],"problem":"p","impact":"i","fix":"f","evidence":"e","scores":{"docs":1},"urgency":"bogus","reason":"r"},
+  {"id":"C2","verdict":"plausible","confidence":"low","argument":"unknown","note":"could not check"},
+  {"id":"C3","verdict":"confirmed","title":"Flush error dropped","file":"pkg/a.go","line":2,"sources":["correctness"],"problem":"p","impact":"i","fix":"f","evidence":"e","scores":{"correctness":3},"urgency":"insist","reason":"data loss"},
+  {"id":"C3.2","verdict":"nit","note":"taste"},
+  {"id":"C3.3","verdict":"confirmed","title":"No scores","file":"pkg/a.go","line":3,"sources":["correctness"],"problem":"p","impact":"i","fix":"f"}
+]
+JSON
+check "verdicts are counted" "4 candidates: 2 kept, 1 nit, 0 disproved, 1 not sure enough, 1 malformed, 1 unverified" "$("$scripts/apply-verdicts.sh" "$ap")"
+check "survivors are numbered in cluster order" "F1 F2" "$(jq -r '[.[].id] | join(" ")' "$ap/merged.json")"
+check "a confirmed verdict is high confidence" "medium high" "$(jq -r '[.[].confidence] | join(" ")' "$ap/merged.json")"
+check "urgency goes to triage, an unknown value is dropped" '[{"id":"F2","urgency":"insist","reason":"data loss"}]' "$(jq -c . "$ap/triage.json")"
+check "the survivors score as findings" "1 critical, 0 warnings, 1 suggestions" "$("$scripts/score-findings.sh" "$ap")"
+echo '[{"id":"C1","verdict":"plausible","confidence":"high","title":"t","file":"a","sources":["docs"],"problem":"p","impact":"i","fix":"f","scores":{"docs":1}}]' >"$ap/verdicts-1.json"
+check "plausible without an argument is dropped" "0" "$("$scripts/apply-verdicts.sh" "$ap" >/dev/null; jq length "$ap/merged.json")"
+echo 'not json' >"$ap/verdicts-1.json"
+check "an unreadable verdicts file leaves clusters unverified" "4 candidates: 0 kept, 0 nit, 0 disproved, 0 not sure enough, 0 malformed, 4 unverified" "$("$scripts/apply-verdicts.sh" "$ap" 2>/dev/null)"
 
 exit "$fail"

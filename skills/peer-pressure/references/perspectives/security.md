@@ -40,35 +40,10 @@ Use `git blame` and `git log` on changed files to understand intent when unclear
 - **Performance is out of scope.** N+1 queries, memory leaks in long-running processes, expensive operations in hot paths, and resource efficiency are handled by the performance reviewer. Only flag these if they constitute a denial-of-service vector exploitable by an untrusted caller.
 - **Architecture is out of scope.** Fragile string matching, duplicated constants, and poor abstractions are not security issues unless they create an exploitable bypass.
 
-## Drop nits early
+## Review bar
 
-Report a finding only if the author would likely act on it. Do not write down:
+Apply the review bar in `bar.md`, named in your prompt. Tag each finding with its closest category and carry evidence.
 
-- naming, wording or formatting preferences that nobody would block a merge on
-- style that a linter or formatter already enforces
-- changes that only make the code slightly shorter or tidier
-- anything whose consequence you cannot state in one sentence
+## Output
 
-If the best case for fixing it is "a small improvement", leave it out. A short review of real issues beats a long one with nits.
-
-## Output format
-
-Write your review to the output path provided. Use this format for each finding:
-
-```
-## [Short Issue Title]
-**File:** path/to/file:line
-**Severity:** critical | warning
-**Type:** security
-**What is wrong:** [1-2 sentences]
-**Attack vector / Impact:** [1 sentence]
-**Recommended change:** [1-2 sentences]
-```
-
-If you find no issues, write: "No security issues found."
-
-Be concise. No preamble or filler. Each finding should be actionable in 3-5 lines. If you find no issues in a category, say so in one line.
-
-## Response contract
-
-After writing your review file, your ONLY response must be the absolute path to your output file and a single stats line (e.g., "2 critical, 1 warning"). Do not summarize findings. Do not include any other text.
+Write your findings in the format given in `reviewer.md`. Use `security` as the lens of each finding.

@@ -54,19 +54,18 @@ Your prompt may include sections titled "Project Context" and "Prior findings". 
 
 ### Maintainability
 
-- Unclear or misleading variable, function, or type names
-- Deeply nested control flow that could be flattened
-- Inconsistent style within the module or file
+- Names that mislead about what a thing does
+- Divergence from the conventions the module or file already follows (cite the existing usage)
+- Duplicated code: a block of logic copied within the diff or module, or one that reimplements an existing helper (name it)
 - Dead code, unused imports, or unreachable branches introduced by the diff
-- Overly clever code that sacrifices readability for brevity
-- Magic numbers or strings that should be named constants
+- Code so dense or clever that a defect in it would be easy to miss
 
 ### Documentation
 
 - Stale claims: documentation or comments that claim the code does X, but the code actually does Y
 - Assumption drift: comments describing behavior that was true before this diff but is no longer true
 - Dead references: doc references to functions, parameters, or behaviors that no longer exist
-- Comments that restate code without adding value
+- Missing docs for new public behavior (one short, correct sentence is enough)
 
 ### Compatibility
 
@@ -92,16 +91,9 @@ Use `git blame` and `git log` on changed files to understand intent when unclear
 - **Test code patterns** (test fixtures, test helpers) should only be flagged if they could leak into production or mask real bugs.
 - **ADRs are historical documents.** Do not flag them for being stale.
 
-## Drop nits early
+## Review bar
 
-Report a finding only if the author would likely act on it. Do not write down:
-
-- naming, wording or formatting preferences that nobody would block a merge on
-- style that a linter or formatter already enforces
-- changes that only make the code slightly shorter or tidier
-- anything whose consequence you cannot state in one sentence
-
-If the best case for fixing it is "a small improvement", leave it out. A short review of real issues beats a long one with nits.
+Apply the review bar in `bar.md`, named in your prompt. Nobody verifies your findings after you, so report a finding only when it fits one of the bar's categories, you checked it against the code, and your confidence is high.
 
 ## Output format
 
@@ -117,6 +109,7 @@ Write a JSON array to the output path provided, and nothing else in the file. On
   "problem": "One or two sentences on what is wrong.",
   "impact": "One sentence on what happens because of it.",
   "fix": "One or two sentences on what to change.",
+  "evidence": "The line, the existing usage or the documentation that shows it.",
   "scores": {"correctness": 2, "maintainability": 1}
 }
 ```
@@ -125,10 +118,8 @@ Write a JSON array to the output path provided, and nothing else in the file. On
 - `file`: the repository path as it appears in the input, with no `:line` suffix and no `a/` or `b/` prefix.
 - `line`: the first affected line as a number, or `null`.
 - `sources`: the lenses that found the issue, in lowercase: `correctness`, `security`, `architecture`, `docs`, `compatibility`, `performance`, `maintainability`.
-- `scores`: for every lens that cares about the issue, a number from 0 to 3. Leave out lenses that do not care. Judge each lens on its own.
-  - 1: minor. 2: significant. 3: severe.
-  - Correctness 3 means data loss, a crash, or a wrong result on the common path. Security 3 means exploitable by an outsider. Docs 3 means a false claim that causes API misuse. Compatibility 3 means a broken public contract or persisted data.
-  - A real but small issue scores 1. Do not inflate.
+- `evidence`: required. Name the line, the existing code or the documentation. For a convention or DRY finding, give the file and line of the existing code.
+- `scores`: for every lens that cares about the issue, a number from 1 to 3, from the score table in `bar.md`. Leave out lenses that do not care. Judge each lens on its own.
 - `problem`, `impact`, `fix`: plain sentences. Put identifiers in backticks. No line breaks.
 - Escape quotes so the file is valid JSON. If you find no issues, write `[]`.
 

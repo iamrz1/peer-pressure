@@ -1,6 +1,6 @@
 ---
 name: peer-pressure
-description: Multi-agent code review where independent reviewers (correctness, security, architecture, docs, compatibility, performance, maintainability) cross-check each other's findings before anything is reported. Reviews a GitHub PR, the current branch, or specific files. Shows the review first, then offers to apply fixes or post a pending PR review. Use when asked to review a PR, a branch, a diff, or files.
+description: Multi-agent code review where reviewers covering correctness, security, architecture, docs, compatibility, performance and maintainability raise findings with evidence, and an independent verifier tries to disprove each one before anything is reported. Reviews a GitHub PR, the current branch, or specific files. Shows the review first, then offers to apply fixes or post a pending PR review. Use when asked to review a PR, a branch, a diff, or files.
 license: MIT
 compatibility: Needs git. PR mode and posting also need gh (authenticated) and jq. Runs reviewers in parallel when the host can start subagents, and one after another otherwise.
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # peer-pressure
 
-You orchestrate a review pipeline. Reviewers work alone, one merge step lists the distinct issues, validators try to disprove each issue and score the ones that hold, and a triage step decides how urgent each one is. Follow the steps in order. Do not skip steps.
+You orchestrate a review pipeline. Three reviewers work alone, each through two or three perspectives, and raise findings with evidence. A script gates and clusters them. One verifier tries to disprove each cluster, merges duplicates, scores the ones that hold and decides how urgent each one is. Follow the steps in order. Do not skip steps.
 
 `SKILL_DIR` is the directory that contains this file. All `references/` and `scripts/` paths below are relative to it.
 
@@ -96,7 +96,7 @@ If the README or manifests make the project's maturity or deployment obvious (in
 Version 0.x, internal tool. Treat API instability and network threat-model findings as suggestions.
 ```
 
-Otherwise leave `CONTEXT` empty. Reviewers and validators get `CONTEXT`. Validators use it only to scale their scores, never to decide whether a claim is true.
+Otherwise leave `CONTEXT` empty. Reviewers and verifiers get `CONTEXT`. Verifiers use it only to scale their scores, never to decide whether a claim is true.
 
 ## Step 4: Choose quick or full
 
@@ -109,112 +109,89 @@ Otherwise leave `CONTEXT` empty. Reviewers and validators get `CONTEXT`. Validat
 
 ```
 Read <SKILL_DIR>/references/pipeline/quick-reviewer.md and follow it exactly.
+Also read <SKILL_DIR>/references/bar.md and apply it.
 <CONTEXT><STACK_PREAMBLE><PRIOR_PREAMBLE>
 You are reviewing <INPUT_DESCRIPTION>. Read the content at <SESSION_DIR>/input.txt.
 Write your review to <SESSION_DIR>/merged.json.
 ```
 
-Then go to Step 8 with `QUICK=--quick`.
+Then go to Step 8 with `QUICK=true`.
 
-## Step 5: Reviewers (full pipeline)
+## Step 5: Split and review (full pipeline)
 
-Run these seven reviewers. Each has a prompt file in `references/perspectives/`:
+Run `"$SKILL_DIR/scripts/split-diff.sh" "$SESSION_DIR"`. It prints `CHUNKS` and a `CHUNK_<i>` path for each chunk. A change that fits in one chunk is `input.txt` itself. A larger one is cut at file boundaries, so no reviewer reads more than about 50k tokens.
 
-| Perspective | Prompt file | Output |
+For each chunk, run three reviewers. Each one owns two or three perspectives and reads the chunk once. The prompt file of each perspective is in `references/perspectives/`:
+
+| Reviewer | Perspective prompt files | Output |
 |---|---|---|
-| correctness | `correctness.md` | `review-correctness.md` |
-| security | `security.md` | `review-security.md` |
-| architecture | `architecture.md` | `review-architecture.md` |
-| docs | `docs.md` | `review-docs.md` |
-| compatibility | `compatibility.md` | `review-compatibility.md` |
-| performance | `performance.md` | `review-performance.md` |
-| maintainability | `maintainability.md` | `review-maintainability.md` |
+| behavior | `correctness.md`, `security.md`, `performance.md` | `findings-behavior-<i>.json` |
+| contracts | `compatibility.md`, `docs.md` | `findings-contracts-<i>.json` |
+| structure | `architecture.md`, `maintainability.md` | `findings-structure-<i>.json` |
 
-Prompt for each reviewer:
+Prompt for each reviewer, for chunk `<i>`:
 
 ```
-Read <SKILL_DIR>/references/perspectives/<file> and follow it exactly.
+Read <SKILL_DIR>/references/pipeline/reviewer.md and follow it exactly.
+Your perspectives, with their prompt files: <name>: <SKILL_DIR>/references/perspectives/<file>, ... (only the ones in your row).
+Also read <SKILL_DIR>/references/bar.md and apply it.
 <CONTEXT><STACK_PREAMBLE><PRIOR_PREAMBLE>
-You are reviewing <INPUT_DESCRIPTION>. Read the content at <SESSION_DIR>/input.txt.
-Write your review to <SESSION_DIR>/<output>.
+You are reviewing <INPUT_DESCRIPTION>. Read the chunk at <CHUNK_i>. The repository to read is <REPO_ROOT>.
+Write your findings to <SESSION_DIR>/<output>.
 ```
 
-**How to run them.** If you can start subagents, start all seven in one batch, and give each only its prompt, not this conversation. Reviewers need to read files, write into the session directory, and run read-only `git log`, `git blame` and `git show`. If you cannot start subagents, do the perspectives one after another yourself. Write each review file before starting the next, and do not reread earlier review files while you work. Say once that you are using the slower sequential mode.
+For the structure reviewer add: "Also write two to four plain sentences on what this chunk does and why to `<SESSION_DIR>/change-<i>.txt`."
+
+**How to run them.** If you can start subagents, start every reviewer of every chunk in one batch, and give each only its prompt, not this conversation. Reviewers need to read files, write into the session directory, and run read-only `git log`, `git blame` and `git show`. If you cannot, do the reviewers one after another yourself, one chunk at a time. Write each findings file before starting the next, and do not reread earlier ones. Say once that you are using the slower sequential mode.
 
 If a reviewer fails, note it and continue. If every reviewer fails, tell the user and stop.
 
-## Step 6: Merge
+## Step 6: Cluster
 
-One agent lists the distinct issues from all review files, using `references/pipeline/merger.md`:
+Run `"$SKILL_DIR/scripts/cluster-findings.sh" "$SESSION_DIR"`. It drops findings that have no known lens, bar category or evidence (listed in `gate.txt`), groups the rest into clusters, and writes `candidates.json` and one `candidates-<k>.json` per verifier. It prints `CLUSTERS`, `VERIFIERS`, `FINDINGS`, `GATED`, and `UNREADABLE` when a reviewer wrote invalid JSON. Keep the numbers.
 
-```
-Read <SKILL_DIR>/references/pipeline/merger.md and follow it exactly.
-Read the review files <SESSION_DIR>/review-*.md and write the merged findings to <SESSION_DIR>/merged.json.
-```
+If `UNREADABLE` lists a file, run that reviewer once more and give it the error. If it fails again, say so and continue. If the script exits with 3, no reviewer wrote findings: say so and stop.
 
-Check the result with `jq -e 'type == "array"' "$SESSION_DIR/merged.json"`. If it is missing or invalid, run the merger once more and give it the error. If it fails again, say "Merge failed." and stop.
+If `CLUSTERS` is 0 there is nothing to verify. Write `[]` to `$SESSION_DIR/merged.json`, skip Step 7 and go to Step 8.
 
-If `merged.json` is `[]`, there are no issues. Skip Step 7, run `score-findings.sh --quick` in Step 8 to write an empty result, skip the triage, and continue with Step 9.
+## Step 7: Verify
 
-## Step 7: Validation
-
-Run one validator per perspective, using `references/pipeline/validator.md`. Prompt for the perspective `<p>`:
+Start `VERIFIERS` verifiers in one batch, one per slice `<k>`. Prompt:
 
 ```
-Read <SKILL_DIR>/references/pipeline/validator.md and follow it exactly.
-<CONTEXT>Your perspective: <p>. Read the findings in <SESSION_DIR>/merged.json and the original input at <SESSION_DIR>/input.txt.
-Write your votes to <SESSION_DIR>/votes-<p>.jsonl.
+Read <SKILL_DIR>/references/pipeline/verifier.md and follow it exactly.
+Also read <SKILL_DIR>/references/bar.md and <SKILL_DIR>/references/pipeline/urgency.md.
+<CONTEXT>Read the clusters in <SESSION_DIR>/candidates-<k>.json. The change is at <SESSION_DIR>/input.txt. The repository to read is <REPO_ROOT>.
+Write your verdicts to <SESSION_DIR>/verdicts-<k>.json.
 ```
 
-Start them in one batch when you can, otherwise run them in turn. Validators must try to disprove each claim against the real code, not agree with it. If a validator fails, its votes are skipped.
+A verifier must try to disprove each claim against the real code, not agree with it. If you cannot start subagents, do the verification yourself after the reviewers, and say that it is less independent. If a verifier fails, its clusters count as unverified and are dropped. Say so.
 
-## Step 8: Score, triage and report
+## Step 8: Score, urgency and report
 
-1. Score. Run `"$SKILL_DIR/scripts/score-findings.sh" "$SESSION_DIR" $QUICK`. `QUICK` is `--quick` for a quick review or an empty merge, and empty otherwise. It keeps the findings that most validators confirmed, adds the lens scores, derives the labels, writes `scored.json` and prints a stats line. Keep the line. If it exits with 3, say that no validator produced readable votes, and stop.
-
-   Whole stack: also run `"$SKILL_DIR/scripts/assign-prs.sh" "$SESSION_DIR"`. It adds the owning PR to each finding, and prints how many findings each PR has. A finding on a line no PR added has no owner and stays in the stack summary only.
-2. Triage. If `scored.json` has findings, run one agent with `references/pipeline/triage.md`:
-
-   ```
-   Read <SKILL_DIR>/references/pipeline/triage.md and follow it exactly.
-   Read the findings <SESSION_DIR>/scored.json and the input <SESSION_DIR>/input.txt. In PR mode, also read <SESSION_DIR>/pr-meta.json (an array in a whole-stack review).
-   Write the decisions to <SESSION_DIR>/triage.json.
-   ```
-
-   If it fails, warn the user and continue. The urgency column stays empty and a critical finding blocks the merge.
-3. Report. Run `"$SKILL_DIR/scripts/build-report.sh" "$SESSION_DIR"`. It writes `report.json` and `synthesis.md` and prints a stats line. Keep it.
+1. Full pipeline: run `"$SKILL_DIR/scripts/apply-verdicts.sh" "$SESSION_DIR"`. It keeps the findings that were confirmed, or plausible with high confidence, writes `merged.json` and `triage.json`, and prints a stats line. Keep the line.
+2. Score: run `"$SKILL_DIR/scripts/score-findings.sh" "$SESSION_DIR"`. It writes `scored.json`, derives the labels and prints a stats line. Keep it.
+3. Quick review only: decide the urgency of each finding yourself. Read `scored.json` and `references/pipeline/urgency.md`, and write `triage.json` as that file describes. Skip this when there are no findings. If you skip it, the urgency column stays empty and a critical finding blocks the merge.
+4. Whole stack: run `"$SKILL_DIR/scripts/assign-prs.sh" "$SESSION_DIR"`. It adds the owning PR to each finding, and prints how many findings each PR has. A finding on a line no PR added has no owner and stays in the stack summary only.
+5. Report: run `"$SKILL_DIR/scripts/build-report.sh" "$SESSION_DIR"`. It writes `report.json` and `synthesis.md` and prints a stats line. Keep it.
 
    Whole stack: then run `"$SKILL_DIR/scripts/assign-prs.sh" "$SESSION_DIR" --split`. It builds `pr-<number>/report.json` and `pr-<number>/synthesis.md` from that PR's findings, and prints one stats line per PR. Keep them.
 
 ## Step 9: Summary
 
-The summary agent writes the prose. A script draws the issues table.
+You write the prose. A script draws the issues table.
 
-1. Prose. Use `references/pipeline/summary.md`.
-
-   PR mode:
-
-   ```
-   Read <SKILL_DIR>/references/pipeline/summary.md and follow it exactly.
-   The input is a PR. Read <SESSION_DIR>/report.json, the diff <SESSION_DIR>/input.txt, <SESSION_DIR>/pr-meta.json and <SESSION_DIR>/prior-review.md.
-   Write the summary to <SESSION_DIR>/summary.md.
-   ```
-
-   Whole stack: the same as PR mode, but say "The input is a stack of PRs" and also read `<SESSION_DIR>/stack.json`.
-
-   Branch and files mode: the same, but say "The input is <INPUT_DESCRIPTION>", and read only `report.json` and `input.txt`.
-
-   Some hosts do not let subagents write report files. If `summary.md` is missing but the agent returned the summary as text, use that text. Do not retry the write or write the file around the block. If there is no summary at all, warn the user and show the stats lines instead. The agent may also write `prior.json` in the session directory. That file is optional.
+1. Prose. Follow `references/pipeline/summary.md` and write `<SESSION_DIR>/summary.md` yourself. Read `report.json`, the change notes `<SESSION_DIR>/change-*.txt`, and in PR mode `pr-meta.json` and `prior-review.md`, plus `stack.json` for a whole stack. A quick review has no change notes: read `input.txt`, which is small.
 2. Issues. Run `"$SKILL_DIR/scripts/render-table.sh" "$SESSION_DIR" --width "${WIDTH:-140}" | tee "$SESSION_DIR/issues.md"`. It prints the counts line, the table in a text fence, the legend, and a short list for findings that must be fixed before merge.
 
 ## Step 10: Present
 
 Always show the review before doing anything else.
 
-- Print the summary prose exactly as returned, without its path line. Then print `## Issues` and the output of `render-table.sh` unchanged. Do not retype or reflow the table.
+- Print the contents of `summary.md` exactly as written. Then print `## Issues` and the output of `render-table.sh` unchanged. Do not retype or reflow the table.
 - Say where the session files are, which pipeline ran (quick, or full with the mode), and which reviewers failed.
 - If the change is stacked, say which base it was reviewed against. For a whole stack, say which PRs were reviewed and list the stats line of each PR.
-- Show the stats lines from Step 8, and how many findings the validators dropped. If the table has fewer rows than the stats, say how many findings the prior comments dismissed.
+- Show the stats lines from Step 8, including how many findings the verifier dropped as nits, disproved or not sure enough. If the table has fewer rows than the stats, say how many findings the prior comments dismissed.
 - If there are no issues, say so and stop.
 
 Then ask:
@@ -252,6 +229,6 @@ If the user says no or wants changes, do not post. `threads.json` can be edited 
 
 - Never apply fixes or post comments without the user's answer in Step 10.
 - Never submit a GitHub review. Posted reviews stay pending. Never call a submit endpoint yourself.
-- Keep your own context small. Use the paths, stats lines and summaries that steps return. Do not read review files yourself, except to run the dry-run in Step 12.
+- Keep your own context small. Use the paths, stats lines and summaries that steps return. Do not read findings, candidates or verdicts files yourself. You read `report.json`, the change notes and the PR files in Step 9, `scored.json` in the quick path, and the dry-run output in Step 12.
 - If a step fails, say which one and continue with what you have, unless the step says stop.
 - Do not put PII, PHI or secrets from the diff into review comments.

@@ -39,41 +39,14 @@ Use `git log` and `git show` to check if removed/changed items had external cons
 
 - **Only flag issues attributable to the diff under review.** Pre-existing compatibility concerns in unchanged code are out of scope unless the diff makes them actively worse.
 
-## Drop nits early
+## Review bar
 
-Report a finding only if the author would likely act on it. Do not write down:
+Apply the review bar in `bar.md`, named in your prompt. Tag each finding with its closest category and carry evidence.
 
-- naming, wording or formatting preferences that nobody would block a merge on
-- style that a linter or formatter already enforces
-- changes that only make the code slightly shorter or tidier
-- anything whose consequence you cannot state in one sentence
-
-If the best case for fixing it is "a small improvement", leave it out. A short review of real issues beats a long one with nits.
-
-## Output format
-
-Write your review to the output path provided. Use this format for each finding:
-
-```
-## [Short Issue Title]
-**File:** path/to/file:line
-**Severity:** critical | warning
-**What changed:** [1-2 sentences describing the before/after]
-**Who breaks:** [which consumers, callers, or systems are affected]
-**Recommended change:** [1-2 sentences — deprecation path, migration, or revert]
-```
-
-Severity guide:
-
-- **critical:** Public API or data contract broken with no migration path (or v1+ library with breaking change and no major version bump)
-- **warning:** Behavior change that may break some consumers silently (or v1+ breaking change that should have bumped major version)
+## Calibration
 
 Note: For v0.x.0 projects, apply the semver exemption — breaking changes are expected during pre-1.0 development. Skip breaking API changes unless they create data loss or irreversible corruption.
 
-If you find no issues, write: "No compatibility issues found."
+## Output
 
-Be concise. No preamble or filler. Each finding should be actionable in 3-5 lines. If you find no issues in a category, say so in one line.
-
-## Response contract
-
-After writing your review file, your ONLY response must be the absolute path to your output file and a single stats line (e.g., "1 critical, 1 warning"). Do not summarize findings. Do not include any other text.
+Write your findings in the format given in `reviewer.md`. Use `compatibility` as the lens of each finding.

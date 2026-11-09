@@ -58,7 +58,9 @@ jq -r --arg today "$(date +%Y-%m-%d)" '
   def block:
     "### \(.title)\n**File:** \(where)\n**Severity:** \(.label)\n**Score:** \(.score)\n"
     + (if .urgency != "" then "**Urgency:** \(.urgency)\n" else "" end)
-    + "**What is wrong:** \(.problem // "")\n**Impact:** \(.impact // "")\n**Recommended change:** \(.fix // "")\n"
+    + "**What is wrong:** \(.problem // "")\n"
+    + (if (.evidence // "") != "" then "**Evidence:** \(.evidence)\n" else "" end)
+    + "**Impact:** \(.impact // "")\n**Recommended change:** \(.fix // "")\n"
     + "Sources: \((.sources // []) | join(", "))\n";
   def section($title; $items):
     "## \($title)\n\n" + (if ($items | length) > 0 then ($items | map(block) | join("\n")) else "None.\n" end) + "\n";
