@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/iamrz1/peer-pressure/compare/v0.7.0...v0.8.0) (2026-11-09)
+
+
+### Features
+
+* run toi and moi in a temporary clone of the PR branch ([#19](https://github.com/iamrz1/peer-pressure/issues/19)) ([128c5df](https://github.com/iamrz1/peer-pressure/commit/128c5dfa03d7a3a0f579a402e3d8944a9d359dc5))
+
 ## [0.7.0](https://github.com/iamrz1/peer-pressure/compare/v0.6.0...v0.7.0) (2026-11-09)
 
 
