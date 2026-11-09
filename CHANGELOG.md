@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/iamrz1/peer-pressure/compare/v0.6.0...v0.7.0) (2026-11-09)
+
+
+### Features
+
+* add babysit to keep reviewing a PR until it is merged or closed ([#16](https://github.com/iamrz1/peer-pressure/issues/16)) ([653bf94](https://github.com/iamrz1/peer-pressure/commit/653bf941d15580047e4dccb6ed664df58e8aa3a4))
+* add moi to take your own PR to approval ([#17](https://github.com/iamrz1/peer-pressure/issues/17)) ([3bab6ef](https://github.com/iamrz1/peer-pressure/commit/3bab6ef35221feecdc3881fc4ddee0a57eff8ad2))
+
 ## [0.6.0](https://github.com/iamrz1/peer-pressure/compare/v0.5.0...v0.6.0) (2026-11-09)
 
 
