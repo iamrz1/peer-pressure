@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/iamrz1/peer-pressure/compare/v0.5.0...v0.6.0) (2026-11-09)
+
+
+### Features
+
+* raise findings with evidence and verify them with fewer agents ([3b743c2](https://github.com/iamrz1/peer-pressure/commit/3b743c2145fd339e8e9a531b37e882d9b2c0f8e0))
+* raise findings with evidence and verify them with fewer agents ([7bc2219](https://github.com/iamrz1/peer-pressure/commit/7bc2219837cadb39a26db4a87466bec66a14225c))
+
 ## [0.5.0](https://github.com/iamrz1/peer-pressure/compare/v0.4.0...v0.5.0) (2026-10-21)
 
 
