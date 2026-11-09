@@ -45,6 +45,8 @@ The JSON must be valid. Escape quotes and newlines inside strings.
 ## Content rules
 
 - One finding per thread. Never bundle issues.
+- State the evidence in each comment: the line, the existing usage or the documentation that shows the problem. Do not add claims the synthesis does not support.
+- Steer, do not order. Say what is wrong and why it matters. When the repo already has a pattern for it, point to that pattern. Do not dictate a rewrite when the author has other sound options.
 - No severity counts or framing such as "3 critical issues found".
 - No local file paths, session directories, or mention of AI tooling.
 - Link code with permalinks: `https://github.com/OWNER/REPO/blob/<HEAD_SHA>/<path>#L<line>`.

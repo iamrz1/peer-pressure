@@ -2,7 +2,7 @@
 
 A code review skill where reviewers keep each other honest.
 
-Seven independent reviewers look at your change: correctness, security, architecture, docs, compatibility, performance, and maintainability. Then validators try to disprove every finding against the real code. Only what survives reaches you.
+Three reviewers look at your change through seven perspectives: correctness, security, architecture, docs, compatibility, performance, and maintainability. Every finding must carry evidence. Then an independent verifier tries to disprove each one against the real code. Only what survives reaches you.
 
 It reviews a GitHub PR, your current branch, or specific files. You always see the review first. It applies fixes or posts a **pending** PR review only when you say so, and it never submits a review.
 
@@ -68,20 +68,23 @@ PR mode needs the [GitHub CLI](https://cli.github.com/) (`gh`, logged in) and `j
 ## How it works
 
 ```
-input -> route -> 7 reviewers -> merge -> 7 validators -> score -> triage -> summary -> you decide
+input -> route -> split -> 3 reviewers -> cluster -> verifier -> score -> report -> summary -> you decide
                                                                                        |-> apply fixes
                                                                                        |-> pending PR review
 ```
 
 1. **Route.** A script weighs the diff. Generated files and import-only changes count as nothing, tests as half, config as a quarter. Small changes get one quick reviewer. Big or high-stakes changes (auth, migrations, concurrency, public contracts) get the full pipeline.
-2. **Review.** Each reviewer has one perspective and works alone.
-3. **Merge.** One agent lists the distinct issues from all reviews and gives each an ID. Reviewer severities are dropped on purpose, so validators are not anchored by them.
-4. **Validate.** Each validator checks every issue against the real code and tries to disprove it. It also gives each surviving issue a 0 to 3 score from its own lens. A script keeps an issue when more validators kept it than dropped it, sums the lens scores, and sets the label from the highest single score: 3 is critical, 2 is warning, anything lower is suggestion. A sum alone would let a style nit that every lens mentions outrank a data-loss bug that only one lens sees.
-5. **Triage.** One agent decides how hard to push each issue: `Insist`, `Ask`, `Up to author` or `Optional`. Severity says how bad the problem is. Urgency also weighs the size of the fix, how far the problem reaches, and whether the code is new in this change.
-6. **Summarize.** An agent writes what the change does and how well. A script then draws the issue table (file, severity and score, urgency, review, fix) at a fixed width, so it stays aligned however many rows there are. The default width is 140 characters. A script cannot read your terminal size, so pass `--width N` to match it.
-7. **You decide.** Apply fixes locally, post a pending review, both, or nothing.
+2. **Split.** A script cuts a large diff at file boundaries into chunks of about 50k tokens, so no agent needs a large context window. Most changes are one chunk.
+3. **Review.** Three reviewers read each chunk once. `behavior` covers correctness, security and performance, `contracts` covers compatibility and docs, and `structure` covers architecture and maintainability. Every finding fits one category of the review bar (`references/bar.md`): unsound, regression, intent, convention (including duplicated code) or docs. It names a lens, carries evidence (the line, the existing code or the documentation) and has its own 0 to 3 score. Taste is left out.
+4. **Cluster.** A script drops findings that lack a category or evidence, then groups findings about the same place.
+5. **Verify.** One verifier, who did not write the findings, tries to disprove each cluster against the real code and looks things up when the code does not settle a claim. It merges duplicates and drops nits. A claim it cannot settle stays only if it can state a high-confidence argument. It also decides how hard to push each survivor: `Insist`, `Ask`, `Up to author` or `Optional`. Severity says how bad the problem is. Urgency also weighs the size of the fix, how far the problem reaches, and whether the code is new in this change. A large review gets one verifier per 8 clusters.
+6. **Score.** A script sums the lens scores and sets the label from the highest single score: 3 is critical, 2 is warning, anything lower is suggestion. A sum alone would let a style nit that every lens mentions outrank a data-loss bug that only one lens sees.
+7. **Summarize.** Your agent writes what the change does and how well, from a short note the structure reviewer leaves. A script then draws the issue table (file, severity and score, urgency, review, fix) at a fixed width, so it stays aligned however many rows there are. The default width is 140 characters. A script cannot read your terminal size, so pass `--width N` to match it.
+8. **You decide.** Apply fixes locally, post a pending review, both, or nothing.
 
-If your agent can start subagents (Claude Code can), reviewers and validators run in parallel with separate contexts. Otherwise they run one after another in one context. That works but is slower, and the reviewers can influence each other, so quality drops a little.
+A full review of one chunk uses four agents: three reviewers and one verifier. Merging, urgency for the quick path and the summary happen in your own session.
+
+If your agent can start subagents (Claude Code can), the reviewers run in parallel with separate contexts. Otherwise everything runs one after another in one context. That works but is slower, and the verification is less independent, so quality drops a little.
 
 On a PR that already has review threads, reviewers skip points that are already raised.
 
@@ -98,9 +101,10 @@ On a PR that already has review threads, reviewers skip points that are already 
 ```
 skills/peer-pressure/
   SKILL.md                    the orchestrator
-  references/perspectives/    one prompt per reviewer
-  references/pipeline/        merger, validator, triage, summary, planner, applier, formatter
-  scripts/                    route-diff.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, post-pending-review.sh
+  references/perspectives/    one checklist per perspective
+  references/bar.md           the review bar every reviewer and the verifier applies
+  references/pipeline/        reviewer, verifier, urgency, quick-reviewer, summary, planner, applier, formatter
+  scripts/                    route-diff.sh, split-diff.sh, cluster-findings.sh, apply-verdicts.sh, find-base.sh, find-stack.sh, stack-context.sh, assign-prs.sh, score-findings.sh, build-report.sh, render-table.sh, pr-context.sh, post-pending-review.sh
 cmd/install/                  the installer
 internal/install/             copy and replace logic
 test/                         offline script tests with a stubbed gh
