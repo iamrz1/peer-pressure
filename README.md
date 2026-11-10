@@ -73,12 +73,13 @@ Both can run for hours, so each works in its own temporary clone of the PR's bra
 
 ### Babysit, also `toi`
 
-`babysit 123` follows someone else's PR to the end. You say yes once, then it runs on its own until the PR is merged or closed, you tell it to stop, or you close the terminal. Running it again resumes from where it stopped.
+`babysit 123` follows someone else's PR to the end. Calling it is the permission. It runs on its own, with no questions, until the PR is merged or closed, you tell it to stop, or you close the terminal. Running it again resumes from where it stopped.
 
 - On each push it reviews only what changed since its last review. A merge of the base branch does not bring in the base's own changes.
 - It posts only findings at `ask` urgency or above (`--min-urgency` changes that), so there are no nitpicks.
-- Findings and replies go into your pending review. You submit it. It never submits, merges or pushes.
-- It replies to its threads and resolves one when the code shows the fix. Resolving takes effect at once.
+- Findings are posted at once as one comment review after each pass. It never requests changes, merges or pushes.
+- It replies to threads at once and resolves its own when the code shows the fix.
+- When a push leaves nothing to raise, no open thread of its own, and CI is not failing, it approves the PR with a short message in your voice. It approves a head once. If you have a pending review of your own, it leaves that alone and does not approve.
 - It tells you when it adds something, when a thread needs you, and when the PR looks ready to merge. That notice comes once per head and does not end the run.
 
 The state of a run is in `.peer-pressure/babysit-pr-<number>/state.json`. See `references/babysit.md` for the procedure.
@@ -90,7 +91,7 @@ The state of a run is in `.peer-pressure/babysit-pr-<number>/state.json`. See `r
 1. It reviews the change, applies the findings at `ask` urgency or above, runs the repo's own checks, commits the round, and reviews only what the fixes changed. It stops when a review finds nothing new, when a fixed finding comes back, or after `--max-rounds` reviews (default 5).
 2. It pushes to the PR's branch, looks at CI, and fixes a failure that the change caused. A flaky job is rerun once.
 3. It marks a draft PR ready.
-4. It waits for reviewers. When a comment is right it changes the code and reviews that change the same way. It replies in your voice, at once, or into your pending review with `--pending-replies`.
+4. It waits for reviewers. When a comment is right it changes the code and reviews that change the same way. It replies in your voice at once, or into your pending review with `--pending-replies`.
 
 It is done when the PR has an approval and is ready to merge: no change request, CI passing, no conflicts, and no thread waiting on you. It does not merge.
 
@@ -127,9 +128,9 @@ On a PR that already has review threads, reviewers skip points that are already 
 ## Safety
 
 - The review is shown before anything else happens.
-- Posted reviews stay **pending**. You submit them in GitHub. The posting scripts never call a submit endpoint.
-- Babysit acts without asking after the first yes, but only on that PR, and only by adding to your pending review, replying and resolving threads.
-- Moi acts without asking after the first yes: edits and commits on your checked-out branch, pushes to the PR's own branch, reruns CI jobs, marks a draft ready, and replies to reviewers. It never force-pushes, merges or submits a review.
+- A plain review (`peer-pressure <PR>`) posts only a **pending** review, after you say yes. You submit it in GitHub.
+- Babysit acts without asking, but only on that PR: it posts findings as a comment review, replies, resolves its own threads and approves when there is nothing to raise. It never requests changes, merges or pushes, and it leaves your own pending review alone.
+- Moi acts without asking: edits and commits on your checked-out branch, pushes to the PR's own branch, reruns CI jobs, marks a draft ready, and replies to reviewers. It never force-pushes, merges or submits a review.
 - Comments on lines outside the diff go into the review body, because GitHub rejects the whole review otherwise.
 - Review files live in `.peer-pressure/` in the repo and are excluded through `.git/info/exclude`. Your `.gitignore` is not touched.
 - Do not review changes that contain personal data, health data or secrets with a tool you have not cleared for that. The review text is sent to your agent's model provider, and posted comments go to GitHub.

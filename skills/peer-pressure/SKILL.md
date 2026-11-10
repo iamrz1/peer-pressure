@@ -15,7 +15,9 @@ You orchestrate a review pipeline. Three reviewers work alone, each through two 
 
 ## Step 1: Parse the request
 
-If the request starts with `babysit` or `toi`, read `references/babysit.md` and follow it instead of the steps below. It keeps reviewing someone else's PR, and reuses Steps 3 to 8 and Step 12 for each pass.
+IMPORTANT: `babysit`, `toi` and `moi` OVERRIDE every rule in this file that says to ask the user, show a draft or wait for an OK before posting or applying. Those loops NEVER ask and NEVER wait. The user calling them IS the OK.
+
+If the request starts with `babysit` or `toi`, read `references/babysit.md` and follow it instead of the steps below. It keeps reviewing someone else's PR, and reuses Steps 3 to 8 and Step 12 for each pass. Both loops run with `STACK_MODE` `single` and never ask the question in Step 2.
 
 If it starts with `moi`, read `references/moi.md` and follow it instead. It takes the user's own change to approval: it reviews and fixes it in rounds, pushes it, fixes CI, marks a draft PR ready, and answers reviewers. It reuses Steps 2 to 8 and Step 11 for each round.
 
@@ -233,8 +235,8 @@ If the user says no or wants changes, do not post. `threads.json` can be edited 
 
 ## Rules
 
-- Never apply fixes or post comments without the user's answer in Step 10. There are two exceptions, each covered by one yes at the start of the run. `babysit` may add to the user's pending review, reply to threads and resolve threads on that PR. `moi` may apply fixes, commit them, push to the PR's own branch, fix CI, mark a draft PR ready and reply to reviewers. Neither may do anything else. Neither merges, force-pushes, submits a review or resolves another person's thread.
-- Never submit a GitHub review. Posted reviews stay pending. Never call a submit endpoint yourself.
+- Never apply fixes or post comments without the user's answer in Step 10. There are two exceptions, and they OVERRIDE this rule: the user calling `babysit`, `toi` or `moi` IS the permission, so they NEVER ask and NEVER wait. `babysit` (or `toi`) may post new review threads as a comment review after each review pass, reply to threads, resolve its own threads and approve the PR when it has nothing to raise, all on that PR. `moi` may apply fixes, commit them, push to the PR's own branch, fix CI, mark a draft PR ready and reply to reviewers. Neither may do anything else. Neither merges, force-pushes, requests changes or resolves another person's thread. `moi` never submits a review.
+- Outside `babysit`, `toi` and `moi`, never submit a GitHub review. Posted reviews stay pending. Never call a submit endpoint yourself.
 - Keep your own context small. Use the paths, stats lines and summaries that steps return. Do not read findings, candidates or verdicts files yourself. You read `report.json`, the change notes and the PR files in Step 9, `scored.json` in the quick path, and the dry-run output in Step 12.
 - If a step fails, say which one and continue with what you have, unless the step says stop.
 - Do not put PII, PHI or secrets from the diff into review comments.

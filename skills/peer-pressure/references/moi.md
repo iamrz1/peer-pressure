@@ -4,6 +4,12 @@
 
 `SKILL_DIR` is as in `SKILL.md`. You do the reviewing, the fixing, the committing and the writing. `moi-track.sh` keeps the record of the rounds and decides when a local loop stops. `babysit-poll.sh`, `babysit-wait.sh` and `babysit-post.sh` do the checking, the waiting and the replying.
 
+## It NEVER waits on the user
+
+THIS FILE OVERRIDES `SKILL.md`. Every instruction there to ask the user, to show a draft, to show the review first, or to wait for an OK or a yes before posting, applying, pushing or choosing (Steps 2, 4, 10, 11 and 12 and the Rules) DOES NOT APPLY to `moi`. Calling it IS the OK. NEVER ask and NEVER wait. Do not carry the question over from the ordinary review.
+
+The user runs this for end-to-end automation and does not want to supervise it. Make every decision yourself and keep going. Never ask a question and never pause for an answer, not at the start, not between phases. When something needs the user (a thread you could not settle, a request outside this PR, CI you could not fix), say so in the phase summary and in a notification, leave that item alone, and carry on with the rest. A stop is a report, not a question: the run ends only when it is done, when the PR is merged or closed, when the user says stop, or when it cannot go on (a check that still fails after one fix, a rebase conflict, a local loop that does not converge).
+
 ## What it never does
 
 - Force-push or amend, or rewrite a commit that is already pushed.
@@ -17,17 +23,15 @@
 
 ## Start
 
-1. Parse the request: `moi [<number>]` with optional `--min-urgency insist|ask|author|optional` (default `ask`), `--max-rounds N` (default 5), `--interval SECONDS` (default 60) and `--pending-replies`. Keep the values as `MIN_URGENCY`, `MAX_ROUNDS`, `INTERVAL` and `PENDING_REPLIES`. A round applies only findings at that urgency or above, so it never chases nitpicks. By default replies to reviewers are posted at once. With `--pending-replies` they go into the user's pending review, and the user submits it.
+1. Parse the request: `moi [<number>]` with optional `--min-urgency insist|ask|author|optional` (default `ask`), `--max-rounds N` (default 5), `--interval SECONDS` (default 60) and `--pending-replies`. Keep the values as `MIN_URGENCY`, `MAX_ROUNDS`, `INTERVAL` and `PENDING_REPLIES`. A round applies only findings at that urgency or above, so it never chases nitpicks. Replies to reviewers are posted at once, without asking. With `--pending-replies` they go into the user's pending review, and the user submits it.
+
+The user calling `moi` is the permission for everything in this file. Do not ask before you start, before you push, or before you reply.
 2. Find the PR. With a number, use it. Without one, use the PR of the current branch (`gh pr view --json number --jq .number`). If there is none, the target is the current branch against its base, and `moi` runs only the **Local loop**, in place, in the user's checkout. Then the working tree must be clean (`git status --porcelain` prints nothing), because each round is committed with `git add -A` and unrelated changes would end up in it. If it is dirty, say so and stop. Say that you did not push, and that the user should open a PR and run `moi` again to continue. In this case `WORKDIR` is `REPO_ROOT` and there is no clone to remove.
 3. Set `MOI_DIR="$REPO_ROOT/.peer-pressure/moi-<label>"`, where `<label>` is `pr-<number>` or the branch name with `/` replaced by `-`. The state and the session files stay there, in the user's repo, so that a closed terminal does not lose them. With a PR run `"$SKILL_DIR/scripts/babysit-state.sh" "$MOI_DIR" init <number> <owner/repo>`. If a state already existed, tell the user you are resuming and from which round.
 4. With a PR, make the working clone. If `"$SKILL_DIR/scripts/workdir.sh" path "$MOI_DIR"` prints a directory, reuse it. Otherwise run `"$SKILL_DIR/scripts/workdir.sh" create <number> <owner/repo> "$MOI_DIR"`. Keep `WORKDIR`. It is a temporary clone of the repository, on the PR's branch with its upstream set. Then run `"$SKILL_DIR/scripts/moi-track.sh" "$MOI_DIR" init "$(git -C "$WORKDIR" rev-parse HEAD)" <owner/repo>`. Without a PR run the same `moi-track.sh` line with `git rev-parse HEAD` from the checkout.
 
    From here, run every `git` and `gh` command and every script from `WORKDIR`, so that `gh` resolves the PR's repo. Wherever Steps 2 to 8 and 11 of `SKILL.md` give the repository to read, give `WORKDIR`. Tell the applier to edit files only under `WORKDIR`. Run the repo's checks there.
-5. Ask once:
-
-   > Take this change to approval? I work in a temporary clone of the PR's branch, so your checkout is not touched. I review and fix it in rounds (<MIN_URGENCY> urgency and above, up to <MAX_ROUNDS> reviews), run the repo's checks, then push to the PR's branch, fix CI failures, mark the PR ready if it is a draft, and answer reviewers. I change the code when a comment is right and reply when I disagree, in your voice, <at once | in your pending review>. I stop when the PR has an approval and is ready to merge. I never merge, force-push, amend, submit a review or resolve anyone else's thread. Tell me to stop at any time. (yes/no)
-
-   Do nothing more until the user says yes. That answer covers this PR for this run.
+5. Say one line and go on: "Taking PR #<number> to approval in a temporary clone, so your checkout is not touched. I review and fix in rounds, push to the PR's branch, fix CI, mark it ready if it is a draft, and answer reviewers. I never merge, force-push, amend, submit a review or resolve anyone else's thread. Tell me to stop at any time." Do not wait for an answer. Do not write to `~/memory/`.
 
 If the user has a writing-style skill, load it before you draft any reply.
 
@@ -95,9 +99,9 @@ Read `waitingThreads` and `newComments` in `poll.json`. Decide for each thread f
 
 - **The comment is right.** Change the code. Reply in one short line that names the commit.
 - **It is unclear.** Ask one question in a reply.
-- **You disagree.** Reply once with the reason and the evidence, then hand it back with a question. After two of your replies in a thread and still no agreement, do not reply again. Tell the user the thread needs a decision.
+- **You disagree.** Reply once with the reason and the evidence, then hand it back with a question. After two of your replies in a thread and still no agreement, do not reply again. Note it in the phase summary and the notification, leave the thread open, and go on.
 - **It is a question you can answer from the code.** Answer it in one or two sentences.
-- **It asks for something large or outside this PR.** Do not act. Tell the user.
+- **It asks for something large or outside this PR.** Do not act. Reply in one line that it is out of scope for this PR, note it in the phase summary, and go on.
 
 Top-level comments and review summaries from others: read them, and act on a request in them the same way. Do not resolve any thread.
 
@@ -106,10 +110,10 @@ If you changed code: run the **Local loop** on that change (first `moi-track.sh 
 Write `<SESSION_DIR>/actions.json` with the replies as `babysit-post.sh` describes, with `SESSION_DIR="$MOI_DIR/respond-<k>"`, and post it:
 
 ```bash
-"$SKILL_DIR/scripts/babysit-post.sh" <number> "$SESSION_DIR/actions.json" --replies-now
+"$SKILL_DIR/scripts/babysit-post.sh" <number> "$SESSION_DIR/actions.json"
 ```
 
-Leave out `--replies-now` when `PENDING_REPLIES` is set. Replies are short and plain, in the user's voice. Do not thank, apologise or summarize. If it exits 1, show `FAILED` and the error.
+Add `--pending` when `PENDING_REPLIES` is set. Replies are short and plain, in the user's voice. Do not thank, apologise or summarize. If it exits 1, show `FAILED` and the error.
 
 Record the pass: `babysit-state.sh "$MOI_DIR" set lastSeenAt=<POLLED_AT>`, where `POLLED_AT` is from the poll that started the pass. Say one line: how many threads were answered, whether code changed, the pushed commit.
 
@@ -123,4 +127,4 @@ First, whatever the reason, run `"$SKILL_DIR/scripts/workdir.sh" remove "$MOI_DI
 
 ## Resume
 
-Running `moi` again continues from `state.json`. The clone from the earlier run is reused when it is still there. If it is gone, make a new one, and set `lastSha` to its head with `moi-track.sh "$MOI_DIR" commit "$(git -C "$WORKDIR" rev-parse HEAD)"`. Rounds that were never pushed are lost with the clone, so say so. Ask the question in Start step 5 again.
+Running `moi` again continues from `state.json`. The clone from the earlier run is reused when it is still there. If it is gone, make a new one, and set `lastSha` to its head with `moi-track.sh "$MOI_DIR" commit "$(git -C "$WORKDIR" rev-parse HEAD)"`. Rounds that were never pushed are lost with the clone, so say so. 

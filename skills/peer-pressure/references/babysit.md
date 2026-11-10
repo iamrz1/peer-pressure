@@ -2,17 +2,24 @@
 
 `babysit <PR>` (also `toi <PR>`) reviews a PR over its whole life. It reviews each push as it arrives, follows up on the threads it raised, tells the user what happened, and stops when the PR is merged or closed. It is for reviewing someone else's PR. `moi` is the counterpart for your own change (see `moi.md`).
 
+The user calling `babysit` or `toi` is the permission for everything in this file. Do not ask before you start, before you post, or before you approve.
+
 `SKILL_DIR` is as in `SKILL.md`. The scripts do the checking and the posting. You decide what to review and what to say.
+
+## It NEVER waits on the user
+
+THIS FILE OVERRIDES `SKILL.md`. Every instruction there to ask the user, to show a draft, to show the review first, or to wait for an OK or a yes before posting, applying, pushing or choosing (Steps 2, 4, 10, 11 and 12 and the Rules) DOES NOT APPLY to `babysit` and `toi`. Calling it IS the OK. NEVER ask and NEVER wait. Do not carry the question over from the ordinary review.
+
+The user runs this for end-to-end automation and does not want to supervise it. Make every decision yourself and keep going. Never ask a question and never pause for an answer, not at the start, not between passes. When something needs the user (a thread you could not settle, a pending review of theirs, a failed pass), say so in the pass summary and in a notification, leave that item alone, and carry on with the rest. The loop ends only at `MERGED` or `CLOSED`, when the user says stop, or when it cannot go on (no way to wait, repeated poll failures).
 
 ## What it never does
 
 - Merge, push or force-push, or change the PR's code. Babysit reviews only.
 - Touch the user's checkout or working tree. It works in its own temporary clone.
-- Submit a review. Everything it writes goes into the user's pending review. The user submits it.
+- Request changes. It comments and approves, nothing stronger.
+- Submit or touch a pending review the user drafted themselves. A review it creates is its own.
 - Reply or post anything when no one asked it to babysit this PR.
 - Stop by itself before the PR is merged or closed. Only the user stops it, or closing the terminal.
-
-Resolving a thread is the one action that takes effect at once, because GitHub has no pending state for it. Say so when you ask for permission.
 
 ## Start
 
@@ -21,12 +28,8 @@ Resolving a thread is the one action that takes effect at once, because GitHub h
 
    The state and the session files stay in `BABYSIT_DIR`, in the user's repo, so that a closed terminal does not lose them. The code is read in a temporary clone: if `"$SKILL_DIR/scripts/workdir.sh" path "$BABYSIT_DIR"` prints a directory, reuse it. Otherwise run `"$SKILL_DIR/scripts/workdir.sh" create <number> <owner/repo> "$BABYSIT_DIR" --read-only`. Keep `WORKDIR`. It is the PR's head, checked out detached. The user's own checkout can be on any branch and in any state.
 3. Run `"$SKILL_DIR/scripts/babysit-poll.sh" <number> "$BABYSIT_DIR"`. If `STATE` is not `OPEN`, say so and stop. If `VIEWER` equals `AUTHOR`, say that babysit reviews other people's PRs and stop.
-4. If `~/memory/` exists, keep a short note in `~/memory/<task>.md`, where `<task>` is the ticket or branch name. Re-read the file before each write and append a timestamped line. Ask the user before creating a file that does not exist yet.
-5. Ask once:
-
-   > Babysit PR #<number> until it is merged or closed? On every push I review only what changed and add findings (<MIN_URGENCY> and above) and replies to your pending review. You submit that review, I never do. I resolve threads I raised once the fix is in, which takes effect at once. I never merge or push. Tell me to stop at any time. (yes/no)
-
-   Do nothing more until the user says yes. That answer covers this PR for this run. Do not carry it to another PR.
+4. Do not write to `~/memory/`. The state file is the record.
+5. Say one line and go on: "Babysitting PR #<number>. I review each push, post findings (<MIN_URGENCY> and above) and replies, resolve my threads when the fix is in, and approve when there is nothing to raise. I never merge, push or request changes. Tell me to stop at any time." Do not wait for an answer. Calling `babysit` covers this PR for this run, and not another PR.
 
 ## The loop
 
@@ -56,9 +59,9 @@ Review what changed since the last review, not the whole PR again. Run every `gi
    - `PRIOR_PREAMBLE` is always set, because your own threads exist. Do not report again what is already open or resolved.
    - For an incremental delta, add to the preamble: "This is the change since commit <FROM_SHA>. Review only this change. Code outside it is out of scope unless this change breaks it."
    - In Step 8, run `build-report.sh "$SESSION_DIR" --min-urgency "$MIN_URGENCY"`. Keep how many findings were held back.
-3. If the report has findings, follow Step 12.1 of `SKILL.md` to write `<SESSION_DIR>/threads.json`, with the delta as the diff. Do not post yet. The **Thread pass** posts everything once.
+3. If the report has findings, follow Step 12.1 of `SKILL.md` to write `<SESSION_DIR>/threads.json`, with the delta as the diff. Do not post yet. The **Thread pass** posts everything once. Skip Step 12.2 to 12.4: there is no preview and no question.
 
-If the pass fails, do not advance the state. The next poll tries again. After two failures on the same head, tell the user and keep watching for a new push.
+If the pass fails, do not advance the state. The next poll tries again. After two failures on the same head, note it in the notification and keep watching for a new push.
 
 ## Thread pass
 
@@ -68,36 +71,38 @@ For each own thread, decide from the code, not from what anyone says:
 
 - **Fixed.** The problem is gone at the head. Reply in one short line that names the commit (`Fixed in <short sha>.`), and add the thread to `resolve`.
 - **The author gave a reason.** Check the reason against the code. If they are right, reply in one line that you agree, and resolve. If they are wrong, reply once with the evidence and leave the thread open.
-- **Still disagreeing after two of your replies.** Do not reply again. Tell the user the thread needs a decision.
-- **A question you can answer from the code.** Answer it in one or two sentences. Otherwise tell the user.
+- **Still disagreeing after two of your replies.** Do not reply again. Note it in the pass summary and the notification, leave the thread open, and go on.
+- **A question you can answer from the code.** Answer it in one or two sentences. If you cannot, leave it, note it in the pass summary and go on.
 - **Not fixed and no reply.** Leave it.
 
 New top-level comments from others are not yours to answer. Mention them in the pass summary.
 
-If the user has a writing-style skill, load it before drafting any reply and write in the user's voice. Replies are short and plain. Do not thank, apologise or summarize.
+If the user has a writing-style skill, load it before drafting any reply or finding and write in the user's voice. Replies are short and plain. Do not thank, apologise or summarize.
 
-Then write `<SESSION_DIR>/actions.json` as `babysit-post.sh` describes: `summary` and `threads` from `threads.json` when the review pass wrote one, plus `replies` and `resolve`. On a respond pass there is no review pass, so use `SESSION_DIR="$BABYSIT_DIR/pass-<pass>"` the same way and create it. Show the output of `--dry-run` once, on the first pass of a run, so the user sees what is posted. After that post without a preview:
+**Approve.** When the review has nothing to raise, approve the PR. That means all of these hold after this pass: `threads.json` is empty or absent, every own thread is resolved (those in `resolve` count), the PR is not a draft, `CI` is not `failing`, the head is the one you reviewed (`lastReviewedSha` will equal `HEAD_SHA`), and `babysit-state.sh "$BABYSIT_DIR" get approvedSha` is not `<HEAD_SHA>`. Then add `"approve": "<message>"` to the actions. The message is short, in the user's voice: `LGTM` or `✅ Looks good`, with at most one plain line about what the PR does. Never an empty message. Never approve in the same pass that posts new threads.
+
+Then write `<SESSION_DIR>/actions.json` as `babysit-post.sh` describes: `summary` and `threads` from `threads.json` when the review pass wrote one, plus `replies`, `resolve` and `approve`. On a respond pass there is no review pass, so use `SESSION_DIR="$BABYSIT_DIR/pass-<pass>"` the same way and create it. Post it, with no preview. New threads go out as one review of type comment, replies and resolves take effect at once:
 
 ```bash
 "$SKILL_DIR/scripts/babysit-post.sh" <number> "$SESSION_DIR/actions.json"
 ```
 
-If it exits 1, show `FAILED` and the error, and do not advance the state.
+If it exits 1, show `FAILED` and the error, and do not advance the state. If `approve` was set and the output says `APPROVED=false`, the viewer has a pending review of their own. Tell the user once that you did not approve because of it, and do not retry on this head.
 
-When it succeeds, record the pass:
+When it succeeds, record the pass. When `APPROVED=true`, also set `approvedSha=<HEAD_SHA>`:
 
 ```bash
 "$SKILL_DIR/scripts/babysit-state.sh" "$BABYSIT_DIR" set lastReviewedSha=<HEAD_SHA> lastSeenAt=<POLLED_AT> pass=<pass>
 ```
 
-`POLLED_AT` is from the poll that started this pass, so activity that arrived during the pass is seen in the next one. Say one line: the pass number, the range reviewed, how many findings were added to the pending review, how many were held back, how many replies and resolves. If anything was added, remind the user once that the pending review is theirs to submit.
+`POLLED_AT` is from the poll that started this pass, so activity that arrived during the pass is seen in the next one. Say one line: the pass number, the range reviewed, how many findings were posted, how many were held back, how many replies and resolves, and whether you approved.
 
 ## Finish
 
-When `STATE` is `MERGED` or `CLOSED`: tell the user which, with the number of passes, comments and resolved threads. Add the last line to the task note if you keep one. Do not start another wait.
+When `STATE` is `MERGED` or `CLOSED`: tell the user which, with the number of passes, comments and resolved threads. Do not start another wait.
 
 Whenever the run ends, also when the user says stop, run `"$SKILL_DIR/scripts/workdir.sh" remove "$BABYSIT_DIR"`. It deletes the clone only when that loses nothing. If it prints `KEPT`, tell the user the directory and the reason. Then stop.
 
 ## Resume
 
-Running `babysit <number>` again continues from `state.json`. Pending comments from the earlier run are still in the user's pending review. The clone from the earlier run is reused when it is still there, and made again when it is not. Ask the question in Start step 5 again.
+Running `babysit <number>` again continues from `state.json`. The clone from the earlier run is reused when it is still there, and made again when it is not.

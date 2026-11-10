@@ -1,33 +1,41 @@
 #!/usr/bin/env bash
-# Add findings and replies to the viewer's pending review, and resolve threads.
+# Post a babysit pass: new threads, replies, resolves and an approval.
 #
-# Usage: babysit-post.sh <pr-number> <actions.json> [--dry-run] [--replies-now]
+# Usage: babysit-post.sh <pr-number> <actions.json> [--dry-run] [--pending]
 #
 # actions.json:
 #   {"summary": "...",
 #    "threads": [{"path", "line", "startLine"?, "body"}],
 #    "replies": [{"threadId", "body"}],
-#    "resolve": ["<threadId>", ...]}
+#    "resolve": ["<threadId>", ...],
+#    "approve": "<short review body>"}
 # Every key is optional.
 #
-# New threads and replies go into the viewer's pending review on the PR. It is
-# created when there is none and reused when there is, because GitHub allows one
-# pending review per user and PR. A thread whose line is not in the diff goes into
-# the review body instead, because GitHub rejects a comment outside the diff.
-# Resolving a thread takes effect at once, as GitHub has no pending state for it.
+# New threads go into a review that is created for this call and submitted as a
+# COMMENT review, so they are visible at once. A thread whose line is not in the
+# diff goes into the review body instead, because GitHub rejects a comment outside
+# the diff. Replies are posted at once as ordinary comments through the REST reply
+# endpoint. Resolving a thread takes effect at once.
 #
-# With --replies-now the replies are posted at once as ordinary comments through the
-# REST reply endpoint, and are not put into the pending review. Without it nothing
-# a reply says is visible to others until the user submits the review.
+# "approve" submits an APPROVE review. It is skipped when the same call adds
+# threads, because a PR that needs comments is not approved. This script never
+# requests changes.
 #
-# This script never submits a review. It only calls the mutations listed in the
-# `gql` calls below. Prints PENDING_REVIEW, THREADS_ADDED, REPLIES_ADDED, LOOSE,
-# RESOLVED and FAILED as key=value lines, and exits 1 when FAILED is above 0.
+# GitHub allows one pending review per user and PR. When the viewer already has one
+# (their own draft), threads are added to it and it is left pending, replies are
+# still posted at once, and an approval is skipped. Nothing the user drafted is ever
+# submitted by this script.
+#
+# With --pending nothing is submitted: threads and replies go into the viewer's
+# pending review, which the user submits, and "approve" is skipped.
+#
+# Prints PENDING_REVIEW, THREADS_ADDED, REPLIES_ADDED, LOOSE, RESOLVED, SUBMITTED,
+# APPROVED and FAILED as key=value lines, and exits 1 when FAILED is above 0.
 # Needs gh and jq.
 set -euo pipefail
 
 usage() {
-  echo "usage: babysit-post.sh <pr-number> <actions.json> [--dry-run] [--replies-now]" >&2
+  echo "usage: babysit-post.sh <pr-number> <actions.json> [--dry-run] [--pending]" >&2
   exit 2
 }
 
@@ -36,11 +44,11 @@ pr="$1"
 actions="$2"
 shift 2
 dry_run=false
-replies_now=false
+pending=false
 for opt in "$@"; do
   case "$opt" in
     --dry-run) dry_run=true ;;
-    --replies-now) replies_now=true ;;
+    --pending) pending=true ;;
     *) usage ;;
   esac
 done
@@ -52,12 +60,14 @@ threads=$(jq -c '.threads // []' "$actions")
 replies=$(jq -c '.replies // []' "$actions")
 resolve=$(jq -c '.resolve // []' "$actions")
 summary=$(jq -r '.summary // ""' "$actions")
+want_approve=$(jq -r 'has("approve")' "$actions")
+approve_body=$(jq -r '.approve // ""' "$actions")
 n_threads=$(jq length <<<"$threads")
 n_replies=$(jq length <<<"$replies")
 n_resolve=$(jq length <<<"$resolve")
 
-if [ $((n_threads + n_replies + n_resolve)) -eq 0 ]; then
-  printf 'PENDING_REVIEW=\nTHREADS_ADDED=0\nREPLIES_ADDED=0\nLOOSE=0\nRESOLVED=0\nFAILED=0\n'
+if [ $((n_threads + n_replies + n_resolve)) -eq 0 ] && [ "$want_approve" != true ]; then
+  printf 'PENDING_REVIEW=\nTHREADS_ADDED=0\nREPLIES_ADDED=0\nLOOSE=0\nRESOLVED=0\nSUBMITTED=false\nAPPROVED=false\nFAILED=0\n'
   exit 0
 fi
 
@@ -100,7 +110,14 @@ new_body=$(jq -rn --arg old "$review_body" --arg s "$summary" --argjson loose "$
 
 echo "PR $owner_repo#$pr: $n_inline inline threads, $n_loose in the review body, $n_replies replies, $n_resolve to resolve"
 if [ "$dry_run" = true ]; then
-  [ -z "$review_id" ] && echo "A pending review would be created." || echo "The pending review $review_id would be extended."
+  if [ "$n_threads" -gt 0 ]; then
+    if [ -n "$review_id" ]; then echo "The pending review $review_id would be extended and left pending."
+    elif [ "$pending" = true ]; then echo "A pending review would be created and left pending."
+    else echo "A review would be created and submitted as a comment."; fi
+  fi
+  if [ "$want_approve" = true ]; then
+    if [ "$pending" = true ] || [ -n "$review_id" ] || [ "$n_threads" -gt 0 ]; then echo "The approval would be skipped."; else echo "The PR would be approved."; fi
+  fi
   jq -r '.[] | "\n+ \(.path):\(.line)\n\(.body)"' <<<"$anchored"
   jq -r '.[] | "\n> reply on \(.threadId)\n\(.body)"' <<<"$replies"
   jq -r '.[] | "\nresolve \(.)"' <<<"$resolve"
@@ -121,11 +138,13 @@ gql() {
 }
 
 need_review=$n_threads
-[ "$replies_now" = true ] || need_review=$((n_threads + n_replies))
+[ "$pending" = false ] || need_review=$((n_threads + n_replies))
+created=false
 if [ "$need_review" -gt 0 ] && [ -z "$review_id" ]; then
   # shellcheck disable=SC2016
   if out=$(gql "create review" -f query='mutation($pr: ID!) { addPullRequestReview(input: {pullRequestId: $pr}) { pullRequestReview { id } } }' -f pr="$pr_id"); then
     review_id=$(jq -r '.data.addPullRequestReview.pullRequestReview.id' <<<"$out")
+    created=true
   else
     failed=$((failed + 1))
   fi
@@ -151,6 +170,17 @@ if [ -n "$review_id" ]; then
   fi
 fi
 
+# Submit the review only when this call created it, so a draft the user wrote is
+# never published by accident.
+submitted=false
+if [ "$pending" = false ] && [ "$created" = true ] && [ -n "$review_id" ] && [ $((added + n_loose)) -gt 0 ]; then
+  # shellcheck disable=SC2016
+  if gql "submit review" -f query='mutation($r: ID!) { submitPullRequestReview(input: {pullRequestReviewId: $r, event: COMMENT}) { pullRequestReview { id } } }' \
+    -f r="$review_id" >/dev/null; then submitted=true; else failed=$((failed + 1)); fi
+elif [ "$pending" = false ] && [ "$created" = false ] && [ -n "$review_id" ]; then
+  echo "babysit-post.sh: the viewer's own pending review is left pending" >&2
+fi
+
 # reply_now <thread-id> <body>: a reply that is visible at once. The REST endpoint
 # replies to the root comment of the thread, so that comment's id is looked up first.
 reply_now() {
@@ -166,7 +196,7 @@ while IFS= read -r r; do
   [ -n "$r" ] || continue
   tid=$(jq -r .threadId <<<"$r")
   body=$(jq -r .body <<<"$r")
-  if [ "$replies_now" = true ]; then
+  if [ "$pending" = false ]; then
     if reply_now "$tid" "$body"; then replied=$((replied + 1)); else failed=$((failed + 1)); fi
   elif [ -n "$review_id" ]; then
     # shellcheck disable=SC2016
@@ -188,6 +218,17 @@ while IFS= read -r id; do
   fi
 done < <(jq -r '.[]' <<<"$resolve")
 
-printf 'PENDING_REVIEW=%s\nTHREADS_ADDED=%s\nREPLIES_ADDED=%s\nLOOSE=%s\nRESOLVED=%s\nFAILED=%s\n' \
-  "$review_id" "$added" "$replied" "$n_loose" "$resolved" "$failed"
+approved=false
+if [ "$want_approve" = true ]; then
+  if [ "$pending" = true ] || [ "$n_threads" -gt 0 ] || [ -n "$review_id" ]; then
+    echo "babysit-post.sh: approval skipped (pending mode, new threads, or the viewer has a pending review)" >&2
+  else
+    # shellcheck disable=SC2016
+    if gql "approve" -f query='mutation($pr: ID!, $body: String) { addPullRequestReview(input: {pullRequestId: $pr, event: APPROVE, body: $body}) { pullRequestReview { id } } }' \
+      -f pr="$pr_id" -f body="$approve_body" >/dev/null; then approved=true; else failed=$((failed + 1)); fi
+  fi
+fi
+
+printf 'PENDING_REVIEW=%s\nTHREADS_ADDED=%s\nREPLIES_ADDED=%s\nLOOSE=%s\nRESOLVED=%s\nSUBMITTED=%s\nAPPROVED=%s\nFAILED=%s\n' \
+  "$review_id" "$added" "$replied" "$n_loose" "$resolved" "$submitted" "$approved" "$failed"
 [ "$failed" -eq 0 ] || exit 1

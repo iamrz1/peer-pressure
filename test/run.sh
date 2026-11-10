@@ -410,18 +410,18 @@ export GH_STUB_THREADS="$bf/post-lookup.json"
 dry=$("$scripts/babysit-post.sh" 14 "$bf/actions.json" --dry-run)
 check "dry run counts the actions" "PR octo/demo#14: 1 inline threads, 1 in the review body, 1 replies, 1 to resolve" "$(head -1 <<<"$dry")"
 check "dry run changes nothing" 0 "$(grep -c mutation "$GH_STUB_LOG" || true)"
-"$scripts/babysit-post.sh" 14 "$bf/actions.json" >"$tmp/bpost.out"
+"$scripts/babysit-post.sh" 14 "$bf/actions.json" --pending >"$tmp/bpost.out"
 check "a missing pending review is created" 1 "$(grep -c addPullRequestReview\( "$GH_STUB_LOG" || true)"
 check "inline threads, replies, resolves and the body are sent" "1 1 1 1" "$(for m in addPullRequestReviewThread\( addPullRequestReviewThreadReply resolveReviewThread updatePullRequestReview; do grep -c "$m" "$GH_STUB_LOG" || true; done | paste -sd' ' -)"
 check "the result is reported" "PRR_new 1 1 1 1 0" "$(sed -n 's/^PENDING_REVIEW=//p;s/^THREADS_ADDED=//p;s/^REPLIES_ADDED=//p;s/^LOOSE=//p;s/^RESOLVED=//p;s/^FAILED=//p' "$tmp/bpost.out" | paste -sd' ' -)"
 : >"$GH_STUB_LOG"
 export GH_STUB_THREADS="$bf/post-lookup-pending.json"
-"$scripts/babysit-post.sh" 14 "$bf/actions.json" >"$tmp/bpost.out"
+"$scripts/babysit-post.sh" 14 "$bf/actions.json" --pending >"$tmp/bpost.out"
 check "an existing pending review is extended, not created" "0" "$(grep -c addPullRequestReview\( "$GH_STUB_LOG" || true)"
 check "the existing review id is used" "PRR_existing" "$(sed -n 's/^PENDING_REVIEW=//p' "$tmp/bpost.out")"
 check "the loose thread joins the earlier body" 1 "$(grep -c 'earlier body' "$GH_STUB_LOG" || true)"
-check "no review is ever submitted" 0 "$(grep -ci 'submitPullRequestReview\|event' "$GH_STUB_LOG" || true)"
-check "the script has no submit call" 0 "$(grep -ci 'submitPullRequestReview' "$scripts/babysit-post.sh" || true)"
+check "pending mode submits nothing" 0 "$(grep -ci 'submitPullRequestReview\|event' "$GH_STUB_LOG" || true)"
+check "the script never requests changes" 0 "$(grep -ci 'REQUEST_CHANGES' "$scripts/babysit-post.sh" || true)"
 echo '{}' >"$tmp/empty-actions.json"
 check "no actions do nothing" "0" "$("$scripts/babysit-post.sh" 14 "$tmp/empty-actions.json" | sed -n 's/^THREADS_ADDED=//p')"
 unset GH_STUB_VIEW
@@ -463,13 +463,43 @@ if "$scripts/babysit-poll.sh" 14 "$au" --as reviewer 2>/dev/null; then check "po
 
 : >"$GH_STUB_LOG"
 export GH_STUB_THREADS="$bf/post-lookup-node.json"
-"$scripts/babysit-post.sh" 14 "$bf/replies.json" --replies-now >"$tmp/now.out"
+"$scripts/babysit-post.sh" 14 "$bf/replies.json" >"$tmp/now.out"
 check "a direct reply goes to the root comment of the thread" 1 "$(grep -c 'pulls/14/comments/4242/replies' "$GH_STUB_LOG" || true)"
 check "a direct reply does not create a pending review" 0 "$(grep -c 'addPullRequestReview' "$GH_STUB_LOG" || true)"
 check "the direct reply is counted" "REPLIES_ADDED=1" "$(grep '^REPLIES_ADDED' "$tmp/now.out")"
-"$scripts/babysit-post.sh" 14 "$bf/replies.json" >"$tmp/later.out"
-check "without the flag the reply goes into the pending review" 1 "$(grep -c 'addPullRequestReviewThreadReply' "$GH_STUB_LOG" || true)"
+"$scripts/babysit-post.sh" 14 "$bf/replies.json" --pending >"$tmp/later.out"
+check "with --pending the reply goes into the pending review" 1 "$(grep -c 'addPullRequestReviewThreadReply' "$GH_STUB_LOG" || true)"
 if "$scripts/babysit-post.sh" 14 "$bf/replies.json" --now 2>/dev/null; then check "post rejects an unknown option" fail ok; else check "post rejects an unknown option" 2 "$?"; fi
+
+# default mode: threads are submitted as a comment review, an approval is its own review
+: >"$GH_STUB_LOG"
+export GH_STUB_THREADS="$bf/post-lookup.json"
+"$scripts/babysit-post.sh" 14 "$bf/actions.json" >"$tmp/sub.out" 2>/dev/null || true
+check "new threads are submitted as a comment review" 1 "$(grep -c 'submitPullRequestReview.*event: COMMENT' "$GH_STUB_LOG" || true)"
+check "the submit is reported" "SUBMITTED=true" "$(grep '^SUBMITTED' "$tmp/sub.out")"
+: >"$GH_STUB_LOG"
+export GH_STUB_THREADS="$bf/post-lookup-pending.json"
+"$scripts/babysit-post.sh" 14 "$bf/actions.json" >"$tmp/sub.out" 2>/dev/null || true
+check "a review the user drafted is never submitted" 0 "$(grep -c 'submitPullRequestReview' "$GH_STUB_LOG" || true)"
+check "a drafted review is left pending" "SUBMITTED=false" "$(grep '^SUBMITTED' "$tmp/sub.out")"
+echo '{"approve": "LGTM"}' >"$tmp/approve.json"
+: >"$GH_STUB_LOG"
+export GH_STUB_THREADS="$bf/post-lookup.json"
+"$scripts/babysit-post.sh" 14 "$tmp/approve.json" >"$tmp/app.out"
+check "an approval is one review with the approve event" 1 "$(grep -c 'addPullRequestReview.*event: APPROVE' "$GH_STUB_LOG" || true)"
+check "the approval is reported" "APPROVED=true" "$(grep '^APPROVED' "$tmp/app.out")"
+: >"$GH_STUB_LOG"
+"$scripts/babysit-post.sh" 14 "$tmp/approve.json" --pending >"$tmp/app.out" 2>/dev/null
+check "pending mode skips the approval" "0 APPROVED=false" "$(grep -c 'event: APPROVE' "$GH_STUB_LOG" || true) $(grep '^APPROVED' "$tmp/app.out")"
+export GH_STUB_THREADS="$bf/post-lookup-pending.json"
+: >"$GH_STUB_LOG"
+"$scripts/babysit-post.sh" 14 "$tmp/approve.json" >"$tmp/app.out" 2>/dev/null
+check "a pending review of the user blocks the approval" "0 APPROVED=false" "$(grep -c 'event: APPROVE' "$GH_STUB_LOG" || true) $(grep '^APPROVED' "$tmp/app.out")"
+export GH_STUB_THREADS="$bf/post-lookup.json"
+jq '. + {approve: "LGTM"}' "$bf/actions.json" >"$tmp/both.json"
+: >"$GH_STUB_LOG"
+"$scripts/babysit-post.sh" 14 "$tmp/both.json" >"$tmp/app.out" 2>/dev/null || true
+check "no approval in a pass that posts threads" "0 APPROVED=false" "$(grep -c 'event: APPROVE' "$GH_STUB_LOG" || true) $(grep '^APPROVED' "$tmp/app.out")"
 unset GH_STUB_VIEW
 export GH_STUB_THREADS="$root/test/fixtures/graphql-threads.json"
 
