@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/iamrz1/peer-pressure/compare/v0.8.0...v0.9.0) (2026-11-10)
+
+
+### Features
+
+* post toi and moi replies at once and let toi approve ([#21](https://github.com/iamrz1/peer-pressure/issues/21)) ([be3da95](https://github.com/iamrz1/peer-pressure/commit/be3da95bcd2d33c3e096617b655b5468f5c33938))
+
 ## [0.8.0](https://github.com/iamrz1/peer-pressure/compare/v0.7.0...v0.8.0) (2026-11-09)
 
 
