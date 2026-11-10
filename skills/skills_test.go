@@ -114,7 +114,7 @@ func TestBabysitProcedureUsesItsScripts(t *testing.T) {
 			t.Errorf("references/babysit.md never uses %s", base)
 		}
 	}
-	for _, rule := range []string{"what it never does", "merge, push", "submit a review", "pending review"} {
+	for _, rule := range []string{"what it never does", "never waits on the user", "merge, push", "request changes", "approve"} {
 		if !strings.Contains(strings.ToLower(procedure), rule) {
 			t.Errorf("references/babysit.md does not state %q", rule)
 		}
@@ -136,9 +136,14 @@ func TestToiAndMoiAreRouted(t *testing.T) {
 	if !strings.Contains(procedure, "moi-track.sh") {
 		t.Error("references/moi.md never uses moi-track.sh")
 	}
-	for _, want := range []string{"babysit-poll.sh", "babysit-wait.sh", "babysit-post.sh", "--as author", "--replies-now"} {
+	for _, want := range []string{"babysit-poll.sh", "babysit-wait.sh", "babysit-post.sh", "--as author", "--pending"} {
 		if !strings.Contains(procedure, want) {
 			t.Errorf("references/moi.md never uses %s", want)
+		}
+	}
+	for _, name := range []string{"SKILL.md", "references/babysit.md", "references/moi.md"} {
+		if text := skillFile(t, name); !strings.Contains(text, "OVERRIDE") || !strings.Contains(text, "NEVER ask") {
+			t.Errorf("%s does not say in capitals that the loops override the ask-first rules", name)
 		}
 	}
 	for _, name := range []string{"references/babysit.md", "references/moi.md"} {
@@ -148,7 +153,7 @@ func TestToiAndMoiAreRouted(t *testing.T) {
 			}
 		}
 	}
-	for _, rule := range []string{"what it never does", "force-push or amend", "merge the pr", "submit a review", "resolve a thread that someone else started", "clean"} {
+	for _, rule := range []string{"what it never does", "never waits on the user", "force-push or amend", "merge the pr", "submit a review", "resolve a thread that someone else started", "clean"} {
 		if !strings.Contains(strings.ToLower(procedure), rule) {
 			t.Errorf("references/moi.md does not state %q", rule)
 		}
