@@ -1,6 +1,10 @@
 # Moi
 
-`moi` takes your own change to approval. It reviews and fixes the change in rounds, pushes it, fixes CI failures, marks a draft PR ready, then waits for reviewers and answers them. It is done when the PR has an approval and is ready to merge. `toi` is its counterpart for someone else's PR (see `babysit.md`).
+`moi` takes your own change to approval. It reviews and fixes the change in rounds, pushes it, fixes CI failures, marks a draft PR ready, then waits for reviewers and answers them. It is done when the PR has the approvals the repo requires and is ready to merge, or when the PR is closed or merged. `toi` is its counterpart for someone else's PR (see `babysit.md`).
+
+The user calling `moi` is the permission for everything in this file. Do not ask before you start, before you push, or before you reply.
+
+Run every `gh` command, and every script that calls `gh`, OUTSIDE the sandbox from the first call (in Claude Code: `dangerouslyDisableSandbox: true` on the Bash call). The user has explicitly allowed this, so do not try inside the sandbox first and do not ask. See the Rules in `SKILL.md`.
 
 `SKILL_DIR` is as in `SKILL.md`. You do the reviewing, the fixing, the committing and the writing. `moi-track.sh` keeps the record of the rounds and decides when a local loop stops. `babysit-poll.sh`, `babysit-wait.sh` and `babysit-post.sh` do the checking, the waiting and the replying.
 
@@ -20,14 +24,13 @@ The user runs this for end-to-end automation and does not want to supervise it. 
 - Throw work away. If something fails it stops and keeps the clone with the changes in it. It deletes the clone only when that clone is clean and everything in it is pushed.
 - Mark the PR ready, or say it is done, while the local loop has findings it could not clear.
 - Work on files that are not under git. Files mode is not supported. Use a branch.
+- Do anything on a PR that is closed or merged. When the PR is closed, for whatever reason, the run ends with no further action: no push, no reply, no CI rerun, no `gh pr ready`. Before every push, every reply and every `gh pr ready`, check `gh pr view <number> --json state --jq .state`. If it is not `OPEN`, go to **Finish**.
 
 ## Start
 
 1. Parse the request: `moi [<number>]` with optional `--min-urgency insist|ask|author|optional` (default `ask`), `--max-rounds N` (default 5), `--interval SECONDS` (default 60) and `--pending-replies`. Keep the values as `MIN_URGENCY`, `MAX_ROUNDS`, `INTERVAL` and `PENDING_REPLIES`. A round applies only findings at that urgency or above, so it never chases nitpicks. Replies to reviewers are posted at once, without asking. With `--pending-replies` they go into the user's pending review, and the user submits it.
-
-The user calling `moi` is the permission for everything in this file. Do not ask before you start, before you push, or before you reply.
 2. Find the PR. With a number, use it. Without one, use the PR of the current branch (`gh pr view --json number --jq .number`). If there is none, the target is the current branch against its base, and `moi` runs only the **Local loop**, in place, in the user's checkout. Then the working tree must be clean (`git status --porcelain` prints nothing), because each round is committed with `git add -A` and unrelated changes would end up in it. If it is dirty, say so and stop. Say that you did not push, and that the user should open a PR and run `moi` again to continue. In this case `WORKDIR` is `REPO_ROOT` and there is no clone to remove.
-3. Set `MOI_DIR="$REPO_ROOT/.peer-pressure/moi-<label>"`, where `<label>` is `pr-<number>` or the branch name with `/` replaced by `-`. The state and the session files stay there, in the user's repo, so that a closed terminal does not lose them. With a PR run `"$SKILL_DIR/scripts/babysit-state.sh" "$MOI_DIR" init <number> <owner/repo>`. If a state already existed, tell the user you are resuming and from which round.
+3. Set `MOI_DIR="$REPO_ROOT/.peer-pressure/moi-<label>"`, where `<label>` is `pr-<number>` or the branch name with `/` replaced by `-`. The state and the session files stay there, in the user's repo, so that a closed terminal does not lose them. With a PR run `"$SKILL_DIR/scripts/babysit-state.sh" "$MOI_DIR" init <number> <owner/repo>`. If a state already existed, tell the user you are resuming and from which round. Then poll once: `"$SKILL_DIR/scripts/babysit-poll.sh" <number> "$MOI_DIR" --as author`. If `ACTION` is `done`, the PR is already closed or merged: go to **Finish** now, before you make a clone.
 4. With a PR, make the working clone. If `"$SKILL_DIR/scripts/workdir.sh" path "$MOI_DIR"` prints a directory, reuse it. Otherwise run `"$SKILL_DIR/scripts/workdir.sh" create <number> <owner/repo> "$MOI_DIR"`. Keep `WORKDIR`. It is a temporary clone of the repository, on the PR's branch with its upstream set. Then run `"$SKILL_DIR/scripts/moi-track.sh" "$MOI_DIR" init "$(git -C "$WORKDIR" rev-parse HEAD)" <owner/repo>`. Without a PR run the same `moi-track.sh` line with `git rev-parse HEAD` from the checkout.
 
    From here, run every `git` and `gh` command and every script from `WORKDIR`, so that `gh` resolves the PR's repo. Wherever Steps 2 to 8 and 11 of `SKILL.md` give the repository to read, give `WORKDIR`. Tell the applier to edit files only under `WORKDIR`. Run the repo's checks there.
@@ -78,7 +81,7 @@ If `DRAFT` is `true` and the local loop was `converged`, run `gh pr ready <numbe
 
 ## Wait and answer reviewers
 
-Repeat until `READY` is `true`, `STATE` is not `OPEN`, or the user says stop.
+Repeat until `READY` is `true`, `ACTION` is `done` (the PR is closed or merged), or the user says stop. `READY` is true only when the repo's required approvals are in (`REVIEW_DECISION` is `APPROVED`, or the repo has no rule and one reviewer approved), nobody requests changes, CI is passing, the PR is not a draft, it has no conflict and no merge block, and no thread waits on the user. Until then keep waiting for reviewers and answering them.
 
 1. Poll with `--as author`. Follow `ACTION`:
    - `done`: go to **Finish**.
@@ -121,8 +124,8 @@ Record the pass: `babysit-state.sh "$MOI_DIR" set lastSeenAt=<POLLED_AT>`, where
 
 First, whatever the reason, run `"$SKILL_DIR/scripts/workdir.sh" remove "$MOI_DIR"` when there is a clone. It deletes the clone only when that loses nothing. If it prints `KEPT`, tell the user the directory and the reason: after a failed check the changes are there, and unpushed commits too. Then:
 
-- `READY` is `true`: tell the user "PR #<number> has an approval and is ready to merge. Merge it yourself." Add the rounds, the CI fixes and the threads answered. Show the commits with `git log --oneline <baseSha>..HEAD`. Stop. Do not merge.
-- `STATE` is `MERGED` or `CLOSED`: say which, and stop.
+- `READY` is `true`: tell the user "PR #<number> has the approvals it needs and is ready to merge. Merge it yourself." Add the rounds, the CI fixes and the threads answered. Show the commits with `git log --oneline <baseSha>..HEAD`. Stop. Do not merge.
+- `END_REASON` is `merged` or `closed`: say which in one line, and stop. Take no other action.
 - The local loop stopped as `repeated`, `max-rounds`, `nothing-changed` or a failed check: say why, list the findings that remain, and stop.
 
 ## Resume

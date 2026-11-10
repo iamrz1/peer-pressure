@@ -31,6 +31,8 @@ case "$1 $2" in
     if [[ "$*" == *mutation* ]]; then
       echo "$*" >>"${GH_STUB_LOG:-/dev/null}"
       echo '{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"PRR_new"}}}}'
+    elif [[ "$*" == *userLogins* ]]; then
+      if [ -n "${GH_STUB_TEAMS:-}" ]; then cat "$GH_STUB_TEAMS"; else echo "teams unavailable" >&2; exit 1; fi
     else cat "$GH_STUB_THREADS"; fi ;;
   "api --method") echo "$*" >>"${GH_STUB_LOG:-/dev/null}"; cat >>"${GH_STUB_LOG:-/dev/null}"; echo '{"html_url":"https://github.com/octo/demo/pull/1#pullrequestreview-1"}' ;;
   *) echo "gh stub: unhandled: $*" >&2; exit 1 ;;

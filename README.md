@@ -73,14 +73,19 @@ Both can run for hours, so each works in its own temporary clone of the PR's bra
 
 ### Babysit, also `toi`
 
-`babysit 123` follows someone else's PR to the end. Calling it is the permission. It runs on its own, with no questions, until the PR is merged or closed, you tell it to stop, or you close the terminal. Running it again resumes from where it stopped.
+`babysit 123` follows someone else's PR to the end. Calling it is the permission. It runs on its own, with no questions. It stops when you tell it to, when you close the terminal, or when one of these happens. Running it again resumes from where it stopped.
+
+- You approved the PR, or `toi` approved it for you. Someone else's approval does not end it if the PR still needs a review from you or your team: it reviews and, when the review is clean, approves, then stops.
+- The PR can merge without your review: the required approvals are in, CI passes, nothing is open and the last push was reviewed.
+- The PR waits only for reviewers who are neither you nor your teams.
+- The PR is merged or closed. Then it takes no further action.
 
 - On each push it reviews only what changed since its last review. A merge of the base branch does not bring in the base's own changes.
 - It posts only findings at `ask` urgency or above (`--min-urgency` changes that), so there are no nitpicks.
 - Findings are posted at once as one comment review after each pass. It never requests changes, merges or pushes.
 - It replies to threads at once and resolves its own when the code shows the fix.
 - When a push leaves nothing to raise, no open thread of its own, and CI is not failing, it approves the PR with a short message in your voice. It approves a head once. If you have a pending review of your own, it leaves that alone and does not approve.
-- It tells you when it adds something, when a thread needs you, and when the PR looks ready to merge. That notice comes once per head and does not end the run.
+- It tells you when it adds something, when a thread needs you, and when the run ends and why.
 
 The state of a run is in `.peer-pressure/babysit-pr-<number>/state.json`. See `references/babysit.md` for the procedure.
 
@@ -93,7 +98,7 @@ The state of a run is in `.peer-pressure/babysit-pr-<number>/state.json`. See `r
 3. It marks a draft PR ready.
 4. It waits for reviewers. When a comment is right it changes the code and reviews that change the same way. It replies in your voice at once, or into your pending review with `--pending-replies`.
 
-It is done when the PR has an approval and is ready to merge: no change request, CI passing, no conflicts, and no thread waiting on you. It does not merge.
+It is done when the PR has the approvals the repo requires and can merge: GitHub's review decision is approved (or the repo has no rule and one reviewer approved), no change request, CI passing, no conflicts or merge block, and no thread waiting on you. It does not merge. If the PR is closed or merged, it ends at once with no further action.
 
 - It never force-pushes, amends, merges, submits a review, or resolves someone else's thread.
 - Without a PR it runs only the local loop, in place, and the working tree must be clean so each round holds only its own fixes. It does not push.
@@ -126,6 +131,8 @@ If your agent can start subagents (Claude Code can), the reviewers run in parall
 On a PR that already has review threads, reviewers skip points that are already raised.
 
 ## Safety
+
+- `gh` runs outside the agent's sandbox, because it fails inside it. The skill tells the agent so, and you have allowed it by installing the skill.
 
 - The review is shown before anything else happens.
 - A plain review (`peer-pressure <PR>`) posts only a **pending** review, after you say yes. You submit it in GitHub.
