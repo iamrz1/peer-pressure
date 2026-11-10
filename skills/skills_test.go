@@ -142,6 +142,16 @@ func TestToiAndMoiAreRouted(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"SKILL.md", "references/babysit.md", "references/moi.md"} {
+		if text := skillFile(t, name); !strings.Contains(text, "OUTSIDE the sandbox") {
+			t.Errorf("%s does not tell the agent to run gh outside the sandbox", name)
+		}
+	}
+	for _, name := range []string{"references/babysit.md", "references/moi.md"} {
+		if text := strings.ToLower(skillFile(t, name)); !strings.Contains(text, "no further action") || !strings.Contains(text, "end_reason") {
+			t.Errorf("%s does not state that a closed PR ends the run with no further action", name)
+		}
+	}
+	for _, name := range []string{"SKILL.md", "references/babysit.md", "references/moi.md"} {
 		if text := skillFile(t, name); !strings.Contains(text, "OVERRIDE") || !strings.Contains(text, "NEVER ask") {
 			t.Errorf("%s does not say in capitals that the loops override the ask-first rules", name)
 		}

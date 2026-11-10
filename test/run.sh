@@ -363,16 +363,59 @@ check "an open thread blocks ready" false "$(pv READY)"
 check "nothing new is idle" idle "$(pv ACTION)"
 check "poll.json lists the new replies" 0 "$(jq '.newReplies | length' "$bs/poll.json")"
 export GH_STUB_THREADS="$bf/poll-clean.json"
-check "all threads resolved, CI passing and reviewed is ready" "true true" "$(pv READY) $(pv READY_NOTICE)"
-"$scripts/babysit-state.sh" "$bs" set readyNotifiedSha=abc123
-check "ready is announced once per head" "true false" "$(pv READY) $(pv READY_NOTICE)"
+check "all threads resolved, CI passing and reviewed is ready" "true" "$(pv READY)"
+check "a reviewer run has no ready notice, it ends instead" "false" "$(pv READY_NOTICE)"
 export GH_STUB_VIEW="$bf/view-failing.json"
 check "failing CI is not ready" "failing false" "$(pv CI) $(pv READY)"
 export GH_STUB_VIEW="$bf/view-pending.json"
 check "running CI is pending" pending "$(pv CI)"
 export GH_STUB_VIEW="$bf/view-merged.json"
 check "a merged PR is done" "MERGED done" "$(pv STATE) $(pv ACTION)"
+check "a merged PR ends as merged" merged "$(pv END_REASON)"
 export GH_STUB_VIEW="$bf/view-open.json"
+jq '.state = "CLOSED"' "$bf/view-open.json" >"$tmp/view-closed.json"
+export GH_STUB_VIEW="$tmp/view-closed.json"
+check "a closed PR is done and ends as closed" "done closed" "$(pv ACTION) $(pv END_REASON)"
+export GH_STUB_VIEW="$bf/view-open.json"
+
+# when toi ends: the viewer approved, or nothing is needed from the viewer
+rv() { jq --arg rd "$1" '.reviewDecision = $rd' "$bf/view-open.json" >"$tmp/view-rd.json"; export GH_STUB_VIEW="$tmp/view-rd.json"; }
+gr() { jq "$1" "$bf/poll-clean.json" >"$tmp/graph-var.json"; export GH_STUB_THREADS="$tmp/graph-var.json"; }
+unset GH_STUB_TEAMS
+rv REVIEW_REQUIRED
+gr '.data.repository.pullRequest.reviews.nodes = [{author:{login:"rezoan"},state:"APPROVED",submittedAt:"2026-11-09T12:00:00Z"}]'
+check "an approval by the viewer ends the run" "done approved APPROVED" "$(pv ACTION) $(pv END_REASON) $(pv VIEWER_VERDICT)"
+gr '.data.repository.pullRequest.reviews.nodes = [{author:{login:"rezoan"},state:"APPROVED",submittedAt:"2026-11-09T10:00:00Z"},{author:{login:"rezoan"},state:"DISMISSED",submittedAt:"2026-11-09T12:00:00Z"}]'
+check "a dismissed approval does not end the run" "" "$(pv END_REASON)"
+rv APPROVED
+gr '.'
+check "required approvals in and nothing needed from the viewer is ready" "done ready false" "$(pv ACTION) $(pv END_REASON) $(pv NEEDS_MY_REVIEW)"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=old111
+check "it still reviews the new head before it ends" "review" "$(pv ACTION)"
+"$scripts/babysit-state.sh" "$bs" set lastReviewedSha=abc123
+rv ""
+gr '.data.repository.pullRequest.reviews.nodes = [{author:{login:"dave"},state:"APPROVED",submittedAt:"2026-11-09T12:00:00Z"}]'
+check "no rule and another approval is ready" "ready false" "$(pv END_REASON) $(pv NEEDS_MY_REVIEW)"
+gr '.'
+check "no rule and no approval still needs the viewer" "true" "$(pv NEEDS_MY_REVIEW)"
+rv REVIEW_REQUIRED
+gr '.data.repository.pullRequest.reviewRequests.nodes = [{requestedReviewer:{__typename:"User",login:"rezoan"}}]'
+check "a request for the viewer needs the viewer" "true" "$(pv NEEDS_MY_REVIEW)"
+gr '.data.repository.pullRequest.reviewRequests.nodes = [{requestedReviewer:{__typename:"Team",slug:"other"}}]'
+check "a team request counts as ours when the teams cannot be read" "true" "$(pv NEEDS_MY_REVIEW)"
+echo '{"data":{"organization":{"teams":{"nodes":[{"slug":"mine"}]}}}}' >"$tmp/teams.json"
+export GH_STUB_TEAMS="$tmp/teams.json"
+check "a request for another team is not ours" "false not-needed" "$(pv NEEDS_MY_REVIEW) $(pv END_REASON)"
+gr '.data.repository.pullRequest.reviewRequests.nodes = [{requestedReviewer:{__typename:"Team",slug:"mine"}}]'
+check "a request for the viewer's team needs the viewer" "true" "$(pv NEEDS_MY_REVIEW)"
+gr '.data.repository.pullRequest.reviewRequests.nodes = [{requestedReviewer:{__typename:"Team",slug:"other"}}] | .data.repository.pullRequest.reviews.nodes = [{author:{login:"rezoan"},state:"COMMENTED",submittedAt:"2026-11-09T12:00:00Z"}]'
+check "a viewer who already reviewed stays in" "true" "$(pv NEEDS_MY_REVIEW)"
+rv CHANGES_REQUESTED
+gr '.'
+check "a change request keeps the viewer in" "true" "$(pv NEEDS_MY_REVIEW)"
+unset GH_STUB_TEAMS
+export GH_STUB_VIEW="$bf/view-open.json"
+export GH_STUB_THREADS="$bf/poll-clean.json"
 
 wo=$("$scripts/babysit-wait.sh" 14 "$bs" --interval 0 --max 0)
 check "wait gives up after the maximum" WAIT=timeout "$(tail -1 <<<"$wo")"
@@ -449,6 +492,16 @@ check "a failure that was handled is not offered again" idle "$(ap ACTION)"
 export GH_STUB_VIEW="$bf/view-author.json"
 export GH_STUB_THREADS="$bf/poll-author-ready.json"
 check "approved, passing and answered is ready" "true 1 0 0" "$(ap READY) $(ap APPROVALS) $(ap CHANGES_REQUESTED) $(ap WAITING_ON_AUTHOR)"
+jq '.reviewDecision = "REVIEW_REQUIRED"' "$bf/view-author.json" >"$tmp/view-author-rd.json"
+export GH_STUB_VIEW="$tmp/view-author-rd.json"
+check "an approval is not enough while the repo still requires more" false "$(ap READY)"
+jq '.reviewDecision = "APPROVED"' "$bf/view-author.json" >"$tmp/view-author-rd.json"
+check "the required approvals make it ready" true "$(ap READY)"
+jq '.reviewDecision = "APPROVED" | .mergeStateStatus = "BLOCKED"' "$bf/view-author.json" >"$tmp/view-author-rd.json"
+check "a blocked merge is not ready" "false BLOCKED" "$(ap READY) $(ap MERGE_STATE)"
+jq '.reviewDecision = "APPROVED" | .state = "CLOSED"' "$bf/view-author.json" >"$tmp/view-author-rd.json"
+check "a closed PR ends the author run too" "done closed" "$(ap ACTION) $(ap END_REASON)"
+export GH_STUB_VIEW="$bf/view-author.json"
 export GH_STUB_VIEW="$bf/view-author-draft.json"
 check "a draft is not ready" false "$(ap READY)"
 export GH_STUB_VIEW="$bf/view-author.json"
