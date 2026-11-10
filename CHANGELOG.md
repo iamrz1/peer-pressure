@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/iamrz1/peer-pressure/compare/v0.9.0...v0.10.0) (2026-11-10)
+
+
+### Features
+
+* end toi and moi on approval, readiness or close ([#23](https://github.com/iamrz1/peer-pressure/issues/23)) ([fea5213](https://github.com/iamrz1/peer-pressure/commit/fea5213169b4bee5cae51c238678a35f53ed0294))
+
 ## [0.9.0](https://github.com/iamrz1/peer-pressure/compare/v0.8.0...v0.9.0) (2026-11-10)
 
 
